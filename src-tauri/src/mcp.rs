@@ -112,8 +112,11 @@ async fn build_instructions(state: &Arc<TokioMutex<AsyncAppState>>) -> String {
     instructions.push_str("\n## Agent Rule Bootstrap\n\n");
     instructions.push_str(
         "Call `setup_agent_rules` once per project to receive behavioral rules for all\n\
-         available renderers and tools. Persist these rules in your native memory/rule\n\
-         system so they guide your behavior across conversations.\n"
+         available renderers and tools. Pass your `agent_type` (e.g. 'claude_code',\n\
+         'claude_desktop', 'cursor', 'codex') so the response includes platform-specific\n\
+         instructions for persisting the rules. Then follow those instructions to commit\n\
+         the rules into your memory/rule system so they guide your behavior across\n\
+         conversations.\n"
     );
 
     // Check for plugins needing authentication

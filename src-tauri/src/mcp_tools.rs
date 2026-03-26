@@ -365,12 +365,27 @@ pub(crate) fn collect_plugin_auth_status(
 }
 
 /// Return agent-type-specific persistence instructions.
-pub(crate) fn persistence_instructions(agent_type: &str) -> &'static str {
+pub(crate) fn persistence_instructions(agent_type: &str) -> String {
     match agent_type {
-        "claude_code" => "Persist each rule as a memory file in your memory system, or add them to CLAUDE.md in the project root. Each rule should be stored so it guides your behavior across conversations.",
-        "claude_desktop" => "Add each rule to your project instructions so they persist across conversations and guide your behavior when using mcp-mux tools.",
-        "codex" => "Add each rule to AGENTS.md in the project root so they persist and guide agent behavior across sessions.",
-        _ => "Persist these rules in your agent's native memory/rule system. For Claude Code: create memory files or add to CLAUDE.md. For Claude Desktop: add to project instructions. For Codex: add to AGENTS.md. The goal is for these rules to guide your behavior across conversations.",
+        "claude_code" => "Create a file at `.claude/rules/mcp-mux.md` in the project root containing all the rules below. Each rule should be a separate section with its name as a heading and its rule text as the body. This file will be automatically loaded by Claude Code as project-level rules.".to_string(),
+
+        "claude_desktop" => "For each rule below, create an individual memory using your memory creation capability. Use the title `mcp-mux: <rule name>` and the rule text as the content. Creating individual memories (rather than one combined memory) ensures each rule is retrievable independently and survives context window limits.".to_string(),
+
+        "codex" => "Append all rules below to `AGENTS.md` in the project root. Each rule should be a separate section with its name as a heading and its rule text as the body.".to_string(),
+
+        "cursor" => "Create a file at `.cursor/rules/mcp-mux.mdc` in the project root containing all the rules below. Each rule should be a separate section with its name as a heading and its rule text as the body. This file is read by Cursor as project-level rules.".to_string(),
+
+        "windsurf" => "Append all rules below to `.windsurfrules` in the project root. Each rule should be a separate section with its name as a heading and its rule text as the body.".to_string(),
+
+        "opencode" => "Append all rules below to `AGENTS.md` in the project root. Each rule should be a separate section with its name as a heading and its rule text as the body.".to_string(),
+
+        "antigravity" => "Append all rules below to `AGENTS.md` in the project root. Each rule should be a separate section with its name as a heading and its rule text as the body.".to_string(),
+
+        _ => "These rules should be persisted so they guide your behavior in future conversations. \
+              Ask the user: \"I have received behavioral rules from MCP Mux for its renderers and tools. \
+              How would you like me to persist them? I can write them to a rules file in this project, \
+              create memories, or use another method your platform supports.\" \
+              Then follow the user's direction to commit the rules.".to_string(),
     }
 }
 
@@ -617,7 +632,7 @@ fn builtin_tool_definitions(renderers: &[RendererDef]) -> Vec<Value> {
                 "properties": {
                     "agent_type": {
                         "type": "string",
-                        "description": "Optional: 'claude_code', 'claude_desktop', 'codex', 'custom'. Tailors persistence instructions."
+                        "description": "The agent platform calling this tool. Supported: 'claude_code', 'claude_desktop', 'codex', 'cursor', 'windsurf', 'opencode', 'antigravity'. If omitted or unrecognized, returns instructions that ask the user how to persist rules."
                     }
                 }
             }
@@ -816,13 +831,13 @@ mod tests {
     #[test]
     fn test_persistence_instructions_claude_code() {
         let instr = persistence_instructions("claude_code");
-        assert!(instr.contains("memory") || instr.contains("CLAUDE.md"));
+        assert!(instr.contains(".claude/rules"));
     }
 
     #[test]
     fn test_persistence_instructions_claude_desktop() {
         let instr = persistence_instructions("claude_desktop");
-        assert!(instr.contains("project instructions"));
+        assert!(instr.contains("memory"));
     }
 
     #[test]
@@ -832,18 +847,38 @@ mod tests {
     }
 
     #[test]
+    fn test_persistence_instructions_cursor() {
+        let instr = persistence_instructions("cursor");
+        assert!(instr.contains(".cursor/rules"));
+    }
+
+    #[test]
+    fn test_persistence_instructions_windsurf() {
+        let instr = persistence_instructions("windsurf");
+        assert!(instr.contains(".windsurfrules"));
+    }
+
+    #[test]
+    fn test_persistence_instructions_opencode() {
+        let instr = persistence_instructions("opencode");
+        assert!(instr.contains("AGENTS.md"));
+    }
+
+    #[test]
+    fn test_persistence_instructions_antigravity() {
+        let instr = persistence_instructions("antigravity");
+        assert!(instr.contains("AGENTS.md"));
+    }
+
+    #[test]
     fn test_persistence_instructions_generic() {
         let instr = persistence_instructions("generic");
-        // Should mention multiple options
-        assert!(instr.contains("CLAUDE.md"));
-        assert!(instr.contains("AGENTS.md"));
+        assert!(instr.contains("Ask the user"));
     }
 
     #[test]
     fn test_persistence_instructions_unknown() {
         let instr = persistence_instructions("some_unknown_agent");
-        // Falls through to default, same as generic
-        assert!(instr.contains("CLAUDE.md"));
-        assert!(instr.contains("AGENTS.md"));
+        assert!(instr.contains("Ask the user"));
     }
 }

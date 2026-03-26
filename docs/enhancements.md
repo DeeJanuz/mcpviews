@@ -1,7 +1,7 @@
 # Technical Debt & Enhancement Log
 
 **Last Updated:** 2026-03-26
-**Total Active Issues:** 2
+**Total Active Issues:** 3
 **Resolved This Month:** 20
 
 ---
@@ -26,6 +26,13 @@ _None_
 - **Detected:** 2026-03-26 (commit a0ed7b5)
 
 ### Low
+
+#### L-005: Hardcoded URL in mcp_mux_entry_for Claude Desktop case diverges from $MCP_MUX_URL variable
+- **File(s):** `src-tauri/scripts/setup-integrations.sh`
+- **Principle:** DRY / Single Source of Truth
+- **Description:** The Claude Desktop case in `mcp_mux_entry_for()` (line 137) hardcodes `http://localhost:4200/mcp` inside a single-quoted heredoc, while all other cases reference `$MCP_MUX_URL`. If the variable is changed at the top of the script, the Claude Desktop entry will silently use the stale URL.
+- **Suggested Fix:** Use an unquoted heredoc or `echo` with variable interpolation so the Claude Desktop case also references `$MCP_MUX_URL`.
+- **Detected:** 2026-03-26 (commit 84e0e57)
 
 #### L-004: Duplicated test helpers across commands.rs and state.rs
 - **File(s):** `src-tauri/src/commands.rs`, `src-tauri/src/state.rs`
@@ -79,6 +86,7 @@ _None_
 
 | Commit | Date | Score | Rating |
 |--------|------|-------|--------|
+| 84e0e57 | 2026-03-26 | 78/100 | Good |
 | abd466b | 2026-03-26 | 90/100 | Excellent |
 | a0ed7b5 | 2026-03-26 | 82/100 | Good |
 | 5a83547 | 2026-03-26 | 88/100 | Good |
