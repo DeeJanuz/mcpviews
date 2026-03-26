@@ -371,15 +371,11 @@ pub(crate) fn persistence_instructions(agent_type: &str) -> String {
 
         "claude_desktop" => "For each rule below, create an individual memory using your memory creation capability. Use the title `mcp-mux: <rule name>` and the rule text as the content. Creating individual memories (rather than one combined memory) ensures each rule is retrievable independently and survives context window limits.".to_string(),
 
-        "codex" => "Append all rules below to `AGENTS.md` in the project root. Each rule should be a separate section with its name as a heading and its rule text as the body.".to_string(),
+        "codex" | "opencode" | "antigravity" => "Append all rules below to `AGENTS.md` in the project root. Each rule should be a separate section with its name as a heading and its rule text as the body.".to_string(),
 
         "cursor" => "Create a file at `.cursor/rules/mcp-mux.mdc` in the project root containing all the rules below. Each rule should be a separate section with its name as a heading and its rule text as the body. This file is read by Cursor as project-level rules.".to_string(),
 
         "windsurf" => "Append all rules below to `.windsurfrules` in the project root. Each rule should be a separate section with its name as a heading and its rule text as the body.".to_string(),
-
-        "opencode" => "Append all rules below to `AGENTS.md` in the project root. Each rule should be a separate section with its name as a heading and its rule text as the body.".to_string(),
-
-        "antigravity" => "Append all rules below to `AGENTS.md` in the project root. Each rule should be a separate section with its name as a heading and its rule text as the body.".to_string(),
 
         _ => "These rules should be persisted so they guide your behavior in future conversations. \
               Ask the user: \"I have received behavioral rules from MCP Mux for its renderers and tools. \
