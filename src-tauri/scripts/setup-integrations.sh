@@ -133,9 +133,7 @@ mcp_mux_entry_for() {
   local idx="$1"
   case "$idx" in
     0) # Claude Desktop — needs mcp-remote bridge (stdio transport only)
-      cat <<'ENTRY'
-{"command":"npx","args":["-y","mcp-remote","http://localhost:4200/mcp"]}
-ENTRY
+      echo "{\"command\":\"npx\",\"args\":[\"-y\",\"mcp-remote\",\"$MCP_MUX_URL\"]}"
       ;;
     *) # All other JSON platforms support url directly
       echo "{\"url\":\"$MCP_MUX_URL\"}"
