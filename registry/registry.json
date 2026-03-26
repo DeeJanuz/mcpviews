@@ -3,14 +3,15 @@
   "plugins": [
     {
       "name": "ludflow",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "description": "Code analysis, documentation, and data governance powered by Ludflow",
       "author": "Ludflow",
       "homepage": "https://ludflow.com",
+      "download_url": "https://github.com/DeeJanuz/ludflow-mcp-mux/releases/download/v0.2.0/ludflow-plugin.zip",
       "tags": ["code-analysis", "documentation", "data-governance", "knowledge-management"],
       "manifest": {
         "name": "ludflow",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "renderers": {
           "search_codebase": "search_results",
           "vector_search": "search_results",
@@ -19,6 +20,7 @@
           "write_document": "document_preview",
           "list_documents": "document_preview",
           "get_data_schema": "data_schema",
+          "manage_data_draft": "data_draft_diff",
           "get_data_lake_schema": "data_schema",
           "get_dependencies": "dependencies",
           "get_file_content": "file_content",
@@ -29,12 +31,14 @@
           "get_column_context": "column_context"
         },
         "mcp": {
-          "url": "http://localhost:4200/mcp",
+          "url": "https://ludflow.com/api/mcp",
           "auth": {
-            "type": "bearer",
-            "token_env": "LUDFLOW_API_KEY"
+            "type": "oauth",
+            "auth_url": "https://ludflow.com/oauth/authorize",
+            "token_url": "https://ludflow.com/oauth/token",
+            "scopes": ["mcp:tools"]
           },
-          "tool_prefix": "ludflow_"
+          "tool_prefix": "ludflow__"
         }
       }
     }
