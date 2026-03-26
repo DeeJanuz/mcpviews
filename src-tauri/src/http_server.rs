@@ -20,6 +20,7 @@ use tokio_stream::StreamExt;
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::mcp;
+use crate::plugin::PluginRegistry;
 use crate::session::PreviewSession;
 use crate::state::AppState;
 
@@ -96,7 +97,14 @@ pub async fn execute_push(
     session_id: Option<String>,
 ) -> ExecutePushResult {
     let session_id = session_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-    let content_type = tool_name.clone();
+
+    // Resolve content_type through plugin renderer maps (tool_name -> renderer_name).
+    // Must lock state (tokio) then plugin_registry (std) and drop before any await.
+    let content_type = {
+        let state_guard = state.lock().await;
+        let registry = state_guard.inner.plugin_registry.lock().unwrap();
+        resolve_content_type(&registry, &tool_name)
+    };
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -450,5 +458,87 @@ pub async fn start_http_server(app_state: Arc<AppState>, app_handle: AppHandle) 
         Err(e) => {
             eprintln!("[mcp-mux] Failed to bind to port 4200: {}", e);
         }
+    }
+}
+
+/// Resolve a tool_name to a content_type (renderer name) by searching all plugin
+/// manifest renderer maps. Falls back to `tool_name` if no mapping is found.
+fn resolve_content_type(registry: &PluginRegistry, tool_name: &str) -> String {
+    for manifest in &registry.manifests {
+        if let Some(renderer_name) = manifest.renderers.get(tool_name) {
+            return renderer_name.clone();
+        }
+    }
+    tool_name.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plugin::PluginRegistry;
+    use mcp_mux_shared::PluginManifest;
+
+    fn empty_registry() -> (PluginRegistry, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let store = mcp_mux_shared::plugin_store::PluginStore::with_dir(dir.path().to_path_buf());
+        let registry = PluginRegistry::load_plugins_with_store(store);
+        (registry, dir)
+    }
+
+    fn manifest_with_renderers(name: &str, renderers: HashMap<String, String>) -> PluginManifest {
+        PluginManifest {
+            name: name.to_string(),
+            version: "1.0.0".to_string(),
+            renderers,
+            mcp: None,
+            renderer_definitions: vec![],
+            tool_rules: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn test_resolve_content_type_with_mapping() {
+        let (mut registry, _dir) = empty_registry();
+        let mut renderers = HashMap::new();
+        renderers.insert("search_codebase".to_string(), "search_results".to_string());
+        registry.add_plugin(manifest_with_renderers("test-plugin", renderers)).unwrap();
+
+        let result = resolve_content_type(&registry, "search_codebase");
+        assert_eq!(result, "search_results");
+    }
+
+    #[test]
+    fn test_resolve_content_type_falls_back_to_tool_name() {
+        let (registry, _dir) = empty_registry();
+        let result = resolve_content_type(&registry, "unknown_tool");
+        assert_eq!(result, "unknown_tool");
+    }
+
+    #[test]
+    fn test_resolve_content_type_no_match_in_manifests() {
+        let (mut registry, _dir) = empty_registry();
+        let mut renderers = HashMap::new();
+        renderers.insert("other_tool".to_string(), "other_renderer".to_string());
+        registry.add_plugin(manifest_with_renderers("test-plugin", renderers)).unwrap();
+
+        let result = resolve_content_type(&registry, "search_codebase");
+        assert_eq!(result, "search_codebase");
+    }
+
+    #[test]
+    fn test_resolve_content_type_multiple_plugins() {
+        let (mut registry, _dir) = empty_registry();
+
+        let mut renderers1 = HashMap::new();
+        renderers1.insert("tool_a".to_string(), "renderer_a".to_string());
+        registry.add_plugin(manifest_with_renderers("plugin-1", renderers1)).unwrap();
+
+        let mut renderers2 = HashMap::new();
+        renderers2.insert("tool_b".to_string(), "renderer_b".to_string());
+        registry.add_plugin(manifest_with_renderers("plugin-2", renderers2)).unwrap();
+
+        assert_eq!(resolve_content_type(&registry, "tool_a"), "renderer_a");
+        assert_eq!(resolve_content_type(&registry, "tool_b"), "renderer_b");
+        assert_eq!(resolve_content_type(&registry, "tool_c"), "tool_c");
     }
 }

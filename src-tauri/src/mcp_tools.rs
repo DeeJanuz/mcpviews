@@ -522,7 +522,7 @@ fn builtin_renderer_definitions() -> Vec<RendererDef> {
             scope: "universal".into(),
             tools: vec![],
             data_hint: Some("{ \"title\": \"Optional heading\", \"body\": \"Markdown content\" }".into()),
-            rule: Some("When presenting implementation plans, architectural decisions, or complex analysis results, ALWAYS push a rich visual summary to the companion window using push_content with tool_name 'rich_content'. Include mermaid diagrams, file change tables, and formatted markdown.".into()),
+            rule: Some("ALWAYS push complex explanations to the companion window using push_content with tool_name 'rich_content' instead of explaining them inline. This includes: implementation plans, architectural decisions, data architecture, data flows, networking topology, system diagrams, API designs, database schemas, and any multi-step technical explanation. Your chat response should be a concise agent-oriented summary (context for what was pushed, next steps, decisions needed). The human-readable explanation with mermaid diagrams, tables, code examples, and formatted markdown goes to push_content. Think of chat as the agent log and the companion window as the user-facing document.".into()),
         },
     ]
 }

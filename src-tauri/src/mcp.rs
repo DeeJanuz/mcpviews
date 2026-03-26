@@ -86,10 +86,16 @@ async fn build_instructions(state: &Arc<TokioMutex<AsyncAppState>>) -> String {
         }
     }
 
-    instructions.push_str("\n## Plan & Architecture Review\n\n");
+    instructions.push_str("\n## Complex Explanations → Companion Window\n\n");
     instructions.push_str(
-        "When presenting implementation plans or architectural decisions for user review,\n\
-         push a rich visual summary to the companion window using `push_content`:\n\n\
+        "ALWAYS push complex explanations to the companion window instead of explaining \n\
+         them inline in chat. This includes: implementation plans, architectural decisions,\n\
+         data architecture, data flows, networking topology, system diagrams, API designs,\n\
+         database schemas, and any multi-step technical explanation.\n\n\
+         Your chat response should be a concise agent-oriented summary — context for what\n\
+         was pushed, next steps, and decisions needed. The human-readable explanation with\n\
+         mermaid diagrams, tables, code examples, and formatted markdown goes to `push_content`.\n\
+         Think of chat as the agent log and the companion window as the user-facing document.\n\n\
          ```\n\
          push_content({\n\
            tool_name: \"rich_content\",\n\
