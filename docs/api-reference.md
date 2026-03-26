@@ -35,14 +35,15 @@ Push content to the viewer. Optionally block until user reviews.
 }
 ```
 
-**Content Type Detection**
+**Content Type Resolution**
 
-Content type detection now defaults to `rich_content` for all tool names. The hardcoded tool-to-renderer mappings have been removed from the backend. Renderer selection is now driven by plugin manifests (the `renderers` field in `PluginManifest`) and custom renderer JS files bundled in plugin ZIP packages.
+Content type (renderer name) is resolved by searching all loaded plugin manifest renderer maps for a matching `toolName` key. If a plugin's `renderers` map contains an entry for the given tool name, that mapped renderer name is used as the `contentType`. If no plugin provides a mapping, the raw `toolName` is used as-is. This resolution is performed by `resolve_content_type()` in `http_server.rs`, matching the same logic used by `mcp_tools.rs` for MCP tool calls.
 
 | `toolName` | Content Type | Renderer |
 |------------|-------------|----------|
 | `rich_content`, `push_to_companion` | `rich_content` | Markdown + mermaid fallback |
-| _(anything else)_ | `rich_content` | Markdown + mermaid fallback (unless overridden by plugin manifest) |
+| _(plugin-mapped tool)_ | Renderer name from plugin manifest `renderers` map | Plugin-provided renderer |
+| _(anything else)_ | Same as `toolName` | Falls back to `rich_content` if no matching renderer JS found |
 
 **Response (non-review)** `201 Created`
 ```json
