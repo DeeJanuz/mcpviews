@@ -46,8 +46,10 @@ MCP Agent → POST localhost:4200/api/push
 | `http_server.rs` | axum HTTP server on `:4200`. Routes: `GET /health`, `POST /api/push`. Runs on a dedicated thread with its own tokio runtime to avoid blocking the GTK event loop |
 | `session.rs` | `SessionStore` — in-memory `HashMap<String, PreviewSession>` with 30-minute TTL and 60s GC interval |
 | `review.rs` | `ReviewState` — pending review management via `tokio::oneshot` channels. `add_pending()` returns a receiver; `resolve()` or `dismiss()` sends the decision |
-| `commands.rs` | Tauri IPC commands: `get_sessions`, `submit_decision`, `dismiss_session`, `get_health` |
-| `state.rs` | `AppState` — shared state containing `Mutex<SessionStore>` and `Mutex<ReviewState>` |
+| `commands.rs` | Tauri IPC commands: `get_sessions`, `submit_decision`, `dismiss_session`, `get_health`, plus 6 plugin management commands (`list_plugins`, `install_plugin`, `uninstall_plugin`, `install_plugin_from_file`, `fetch_registry`, `start_plugin_auth`) |
+| `state.rs` | `AppState` — shared state containing `Mutex<SessionStore>`, `Mutex<ReviewState>`, `Mutex<PluginRegistry>`, and `reqwest::Client` |
+| `registry.rs` | Remote plugin registry client — fetches GitHub-hosted JSON index with 1-hour cache |
+| `auth.rs` | Plugin authentication — OAuth browser-redirect flow with ephemeral localhost callback server, plus Bearer and API key resolution |
 
 ### Frontend (`src/` + `public/`)
 
@@ -56,10 +58,28 @@ The WebView loads `index.html` which includes:
 - `styles.css` — all styling (ported from companion)
 - `main.js` — app bootstrap, Tauri IPC event listener, session/queue management
 - `renderers/*.js` — 14 content-type renderers (ported unchanged from companion)
+- `plugin-manager.js` — Plugin Manager window logic (registry browser, installed list, settings)
 
 **Key change from companion**: WebSocket replaced with Tauri IPC:
 - Receive: `window.__TAURI__.event.listen('push_preview', callback)`
 - Send: `window.__TAURI__.core.invoke('submit_decision', payload)`
+
+### Shared Types (`shared/`)
+
+`mcp-mux-shared` crate consumed by both the Tauri backend and CLI. Defines:
+- `PluginManifest`, `PluginMcpConfig` — plugin definition and MCP connection config
+- `PluginAuth` — tagged enum: `Bearer { token_env }`, `ApiKey { header_name, key_env }`, `OAuth { client_id, auth_url, token_url, scopes }`
+- `RegistryEntry`, `RemoteRegistry` — remote registry schema
+- `PluginInfo` — lightweight plugin summary for IPC
+- Path helpers: `plugins_dir()`, `config_path()`, `auth_dir()`, `cache_dir()` — all under `~/.mcp-mux/`
+
+### CLI (`cli/`)
+
+Standalone binary (`mcp-mux-cli`) for headless plugin management. Commands: `list`, `add`, `remove`, `add-custom`, `search`. Shares `mcp-mux-shared` types with the Tauri app. See [docs/cli.md](cli.md).
+
+### Plugin Registry (`registry/`)
+
+GitHub-hosted `registry.json` containing available plugins with manifests, descriptions, tags, and author info. Fetched by both the Tauri app and CLI with a 1-hour cache.
 
 ### SSE Sidecar (`sidecar/`)
 
@@ -88,9 +108,10 @@ For `reviewRequired: true` pushes, the HTTP handler:
 
 ### Window Management
 - Close → hide to tray (not quit)
-- Tray click → show + focus window
-- Push event → show + focus window (automatic)
-- Tray menu → "Show Window" / "Quit"
+- Tray click → show + focus main window
+- Push event → show + focus main window (automatic)
+- Tray menu → "Show Window" / "Manage Plugins" / "Setup Agent Integrations" / "Quit"
+- "Manage Plugins" opens a separate Plugin Manager window (`plugin-manager.html`, 800x600)
 
 ## API Compatibility
 

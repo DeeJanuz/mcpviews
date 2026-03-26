@@ -156,6 +156,59 @@ const health = await invoke('get_health');
 // Returns: { version: "0.1.0", status: "ok" }
 ```
 
+### `list_plugins`
+
+Returns all installed plugins.
+
+```javascript
+const plugins = await invoke('list_plugins');
+// Returns: PluginInfo[]
+// PluginInfo: { name, version, has_mcp, auth_type, tool_count }
+```
+
+### `install_plugin`
+
+Install a plugin from a JSON manifest string.
+
+```javascript
+await invoke('install_plugin', { manifestJson: '{"name":"...","version":"...","renderers":{}}' });
+```
+
+### `uninstall_plugin`
+
+Remove an installed plugin by name.
+
+```javascript
+await invoke('uninstall_plugin', { name: 'plugin-name' });
+```
+
+### `install_plugin_from_file`
+
+Install a plugin from a local manifest file path.
+
+```javascript
+await invoke('install_plugin_from_file', { path: '/path/to/manifest.json' });
+```
+
+### `fetch_registry`
+
+Fetch available plugins from the remote registry. Uses 1-hour cache.
+
+```javascript
+const entries = await invoke('fetch_registry', { registryUrl: null });
+// Returns: RegistryEntry[]
+// RegistryEntry: { name, version, description, author, homepage, manifest, tags }
+```
+
+### `start_plugin_auth`
+
+Initiate authentication for a plugin. Starts OAuth browser flow for OAuth plugins, or resolves env vars for Bearer/ApiKey plugins.
+
+```javascript
+const token = await invoke('start_plugin_auth', { pluginName: 'my-plugin' });
+// Returns: token string on success
+```
+
 ## Tauri Events
 
 ### `push_preview` (Rust → WebView)
