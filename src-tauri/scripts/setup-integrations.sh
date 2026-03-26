@@ -127,16 +127,32 @@ if command -v python3 &>/dev/null; then
   HAS_PYTHON=true
 fi
 
+# Claude Desktop requires stdio transport — use mcp-remote bridge for HTTP servers.
+# Returns the JSON snippet for the mcp-mux entry based on platform.
+mcp_mux_entry_for() {
+  local idx="$1"
+  case "$idx" in
+    0) # Claude Desktop — needs mcp-remote bridge (stdio transport only)
+      cat <<'ENTRY'
+{"command":"npx","args":["-y","mcp-remote","http://localhost:4200/mcp"]}
+ENTRY
+      ;;
+    *) # All other JSON platforms support url directly
+      echo "{\"url\":\"$MCP_MUX_URL\"}"
+      ;;
+  esac
+}
+
 # Merge mcp-mux entry into a JSON config file using python3.
-# $1 = file path, $2 = top-level key (mcpServers or mcp)
+# $1 = file path, $2 = top-level key, $3 = JSON string for the mcp-mux value
 merge_json_python() {
-  local cfg="$1" key="$2"
+  local cfg="$1" key="$2" entry_json="$3"
   python3 -c "
 import json, os, sys
 
 cfg_path = sys.argv[1]
 key = sys.argv[2]
-url = sys.argv[3]
+entry = json.loads(sys.argv[3])
 
 data = {}
 if os.path.isfile(cfg_path) and os.path.getsize(cfg_path) > 0:
@@ -144,7 +160,6 @@ if os.path.isfile(cfg_path) and os.path.getsize(cfg_path) > 0:
         with open(cfg_path, 'r') as f:
             data = json.load(f)
     except (json.JSONDecodeError, ValueError):
-        # Corrupted file — start fresh but back up
         pass
 
 if not isinstance(data, dict):
@@ -153,24 +168,22 @@ if not isinstance(data, dict):
 if key not in data or not isinstance(data[key], dict):
     data[key] = {}
 
-data[key]['mcp-mux'] = {'url': url}
+data[key]['mcp-mux'] = entry
 
 with open(cfg_path, 'w') as f:
     json.dump(data, f, indent=2)
     f.write('\n')
-" "$cfg" "$key" "$MCP_MUX_URL"
+" "$cfg" "$key" "$entry_json"
 }
 
 # Write a fresh JSON config with just the mcp-mux entry (bash fallback for new files).
-# $1 = file path, $2 = top-level key
+# $1 = file path, $2 = top-level key, $3 = formatted entry lines (indented)
 write_fresh_json() {
-  local cfg="$1" key="$2"
+  local cfg="$1" key="$2" entry_lines="$3"
   cat > "$cfg" <<ENDJSON
 {
   "$key": {
-    "mcp-mux": {
-      "url": "$MCP_MUX_URL"
-    }
+    "mcp-mux": $entry_lines
   }
 }
 ENDJSON
@@ -178,13 +191,13 @@ ENDJSON
 
 # Bash-only merge: back up, then attempt a simple insertion.
 # Falls back to writing a fresh file if the existing file is unparseable.
-# $1 = file path, $2 = top-level key
+# $1 = file path, $2 = top-level key, $3 = formatted entry lines
 merge_json_bash() {
-  local cfg="$1" key="$2"
+  local cfg="$1" key="$2" entry_lines="$3"
 
   # If file doesn't exist or is empty, write fresh
   if [[ ! -s "$cfg" ]]; then
-    write_fresh_json "$cfg" "$key"
+    write_fresh_json "$cfg" "$key" "$entry_lines"
     return 0
   fi
 
@@ -193,8 +206,6 @@ merge_json_bash() {
 
   # Check if the top-level key already exists
   if grep -q "\"$key\"" "$cfg"; then
-    # Key exists — insert mcp-mux entry after the opening brace of the key's object.
-    # Strategy: find the line with "$key" and the next '{', then insert after it.
     local tmp
     tmp="$(mktemp)"
     local inserted=false
@@ -203,26 +214,15 @@ merge_json_bash() {
       echo "$line" >> "$tmp"
       if [[ "$found_key" == false ]] && echo "$line" | grep -q "\"$key\""; then
         found_key=true
-        # If the opening brace is on the same line (e.g., "mcpServers": {), insert after
         if echo "$line" | grep -q '{'; then
-          # Insert the entry
-          cat >> "$tmp" <<ENTRY
-    "mcp-mux": {
-      "url": "$MCP_MUX_URL"
-    },
-ENTRY
+          echo "    \"mcp-mux\": $entry_lines," >> "$tmp"
           inserted=true
         fi
         continue
       fi
       if [[ "$found_key" == true ]] && [[ "$inserted" == false ]]; then
-        # Look for the opening brace on a subsequent line
         if echo "$line" | grep -q '{'; then
-          cat >> "$tmp" <<ENTRY
-    "mcp-mux": {
-      "url": "$MCP_MUX_URL"
-    },
-ENTRY
+          echo "    \"mcp-mux\": $entry_lines," >> "$tmp"
           inserted=true
         fi
       fi
@@ -232,12 +232,9 @@ ENTRY
       mv "$tmp" "$cfg"
     else
       rm -f "$tmp"
-      # Could not insert — overwrite with fresh (preserving backup)
-      write_fresh_json "$cfg" "$key"
+      write_fresh_json "$cfg" "$key" "$entry_lines"
     fi
   else
-    # Key does not exist — we need to add it.
-    # Simple approach: if file has a top-level object, insert before the last '}'
     local tmp
     tmp="$(mktemp)"
     local last_brace_line
@@ -248,13 +245,9 @@ ENTRY
       while IFS= read -r line || [[ -n "$line" ]]; do
         line_num=$((line_num + 1))
         if [[ "$line_num" -eq "$last_brace_line" ]]; then
-          # Need a comma on the previous content if there was any
-          # Insert the new key before the closing brace
           cat >> "$tmp" <<ENTRY
   ,"$key": {
-    "mcp-mux": {
-      "url": "$MCP_MUX_URL"
-    }
+    "mcp-mux": $entry_lines
   }
 ENTRY
         fi
@@ -263,7 +256,7 @@ ENTRY
       mv "$tmp" "$cfg"
     else
       rm -f "$tmp"
-      write_fresh_json "$cfg" "$key"
+      write_fresh_json "$cfg" "$key" "$entry_lines"
     fi
   fi
 }
@@ -271,9 +264,10 @@ ENTRY
 # High-level: configure a JSON-based platform
 configure_json() {
   local idx="$1"
-  local cfg key
+  local cfg key entry_json
   cfg="$(config_path_for "$idx")"
   key="$(mcp_key_for "$idx")"
+  entry_json="$(mcp_mux_entry_for "$idx")"
 
   # Ensure parent directory exists
   mkdir -p "$(dirname "$cfg")"
@@ -284,9 +278,9 @@ configure_json() {
   fi
 
   if [[ "$HAS_PYTHON" == true ]]; then
-    merge_json_python "$cfg" "$key"
+    merge_json_python "$cfg" "$key" "$entry_json"
   else
-    merge_json_bash "$cfg" "$key"
+    merge_json_bash "$cfg" "$key" "$entry_json"
   fi
 }
 
