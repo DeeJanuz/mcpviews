@@ -1,5 +1,7 @@
+use base64::Engine;
 use mcp_mux_shared::auth_dir;
 use mcp_mux_shared::token_store::StoredToken;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
 /// Start an OAuth authorization code flow:
@@ -13,7 +15,7 @@ use std::collections::HashMap;
 /// Returns the access token on success
 pub async fn start_oauth_flow(
     plugin_name: &str,
-    client_id: &str,
+    client_id: Option<&str>,
     auth_url: &str,
     token_url: &str,
     scopes: &[String],
@@ -62,16 +64,36 @@ pub async fn start_oauth_flow(
     let port = local_addr.port();
     let redirect_uri = format!("http://localhost:{}/callback", port);
 
+    // Generate PKCE code_verifier and code_challenge (S256)
+    let verifier_bytes: [u8; 32] = {
+        let u1 = uuid::Uuid::new_v4();
+        let u2 = uuid::Uuid::new_v4();
+        let mut bytes = [0u8; 32];
+        bytes[..16].copy_from_slice(u1.as_bytes());
+        bytes[16..].copy_from_slice(u2.as_bytes());
+        bytes
+    };
+    let code_verifier = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(verifier_bytes);
+
+    let mut hasher = Sha256::new();
+    hasher.update(code_verifier.as_bytes());
+    let hash = hasher.finalize();
+    let code_challenge = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hash);
+
     // Build the authorization URL with proper encoding
     let scopes_joined = scopes.join(" ");
     let mut parsed_url = reqwest::Url::parse(auth_url)
         .map_err(|e| format!("Invalid auth_url '{}': {}", auth_url, e))?;
+    if let Some(cid) = client_id {
+        parsed_url.query_pairs_mut().append_pair("client_id", cid);
+    }
     parsed_url
         .query_pairs_mut()
-        .append_pair("client_id", client_id)
         .append_pair("redirect_uri", &redirect_uri)
         .append_pair("response_type", "code")
-        .append_pair("scope", &scopes_joined);
+        .append_pair("scope", &scopes_joined)
+        .append_pair("code_challenge", &code_challenge)
+        .append_pair("code_challenge_method", "S256");
     let authorization_url = parsed_url.to_string();
 
     // Start the server in a background task
@@ -92,14 +114,19 @@ pub async fn start_oauth_flow(
     server_handle.abort();
 
     // Exchange the authorization code for a token
+    let mut form_params: Vec<(&str, &str)> = vec![
+        ("grant_type", "authorization_code"),
+        ("code", code.as_str()),
+        ("redirect_uri", redirect_uri.as_str()),
+        ("code_verifier", code_verifier.as_str()),
+    ];
+    if let Some(cid) = client_id {
+        form_params.push(("client_id", cid));
+    }
+
     let token_response = http_client
         .post(token_url)
-        .form(&[
-            ("grant_type", "authorization_code"),
-            ("code", &code),
-            ("redirect_uri", &redirect_uri),
-            ("client_id", client_id),
-        ])
+        .form(&form_params)
         .send()
         .await
         .map_err(|e| format!("Token exchange request failed: {}", e))?;
@@ -176,20 +203,6 @@ pub fn store_token(plugin_name: &str, token: &StoredToken) -> Result<(), String>
     mcp_mux_shared::token_store::store_token(&auth_dir(), plugin_name, token)
 }
 
-/// Load a stored OAuth token for a plugin, returning None if expired
-pub fn load_token(plugin_name: &str) -> Option<String> {
-    let stored = mcp_mux_shared::token_store::load_stored_token(&auth_dir(), plugin_name)?;
-    Some(stored.access_token)
-}
-
-/// Clear stored token for a plugin
-pub fn clear_token(plugin_name: &str) -> Result<(), String> {
-    let path = auth_dir().join(format!("{}.json", plugin_name));
-    if path.exists() {
-        std::fs::remove_file(&path).map_err(|e| format!("Failed to remove token: {}", e))?;
-    }
-    Ok(())
-}
 
 /// Store a simple API key or bearer token (not OAuth)
 pub fn store_api_key(plugin_name: &str, key: &str) -> Result<(), String> {

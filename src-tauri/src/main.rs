@@ -6,9 +6,11 @@ mod commands;
 mod http_server;
 mod installer;
 mod mcp;
+mod mcp_session;
 mod mcp_tools;
 mod plugin;
 mod registry;
+mod renderer_scanner;
 mod tool_cache;
 mod review;
 mod session;
@@ -24,6 +26,24 @@ use tauri::{
 };
 use tauri_plugin_autostart::MacosLauncher;
 
+fn mime_from_extension(path: &std::path::Path) -> &'static str {
+    match path.extension().and_then(|e| e.to_str()) {
+        Some("js") => "application/javascript",
+        Some("mjs") => "application/javascript",
+        Some("css") => "text/css",
+        Some("html") | Some("htm") => "text/html",
+        Some("json") => "application/json",
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("svg") => "image/svg+xml",
+        Some("woff") => "font/woff",
+        Some("woff2") => "font/woff2",
+        Some("ttf") => "font/ttf",
+        _ => "application/octet-stream",
+    }
+}
+
 fn main() {
     let app_state = Arc::new(AppState::new());
 
@@ -34,6 +54,54 @@ fn main() {
             MacosLauncher::LaunchAgent,
             None,
         ))
+        .register_uri_scheme_protocol("plugin", |_ctx, request| {
+            let uri = request.uri().to_string();
+            // URI format: plugin://localhost/{plugin_name}/{path...}
+            let path = uri
+                .strip_prefix("plugin://localhost/")
+                .or_else(|| uri.strip_prefix("plugin://localhost"))
+                .unwrap_or("");
+
+            let mut parts = path.splitn(2, '/');
+            let plugin_name = parts.next().unwrap_or("");
+            let file_path = parts.next().unwrap_or("");
+
+            if plugin_name.is_empty() || file_path.is_empty() {
+                return tauri::http::Response::builder()
+                    .status(404)
+                    .body(Vec::new())
+                    .unwrap();
+            }
+
+            // Path traversal protection
+            if file_path.contains("..") {
+                return tauri::http::Response::builder()
+                    .status(403)
+                    .body(b"Forbidden: path traversal".to_vec())
+                    .unwrap();
+            }
+
+            let plugins_dir = mcp_mux_shared::plugins_dir();
+            let full_path = plugins_dir.join(plugin_name).join(file_path);
+
+            match std::fs::read(&full_path) {
+                Ok(contents) => {
+                    let mime = mime_from_extension(&full_path);
+                    tauri::http::Response::builder()
+                        .status(200)
+                        .header("Content-Type", mime)
+                        .header("Access-Control-Allow-Origin", "*")
+                        .body(contents)
+                        .unwrap()
+                }
+                Err(_) => {
+                    tauri::http::Response::builder()
+                        .status(404)
+                        .body(b"Not found".to_vec())
+                        .unwrap()
+                }
+            }
+        })
         .manage(app_state.clone())
         .invoke_handler(tauri::generate_handler![
             commands::get_sessions,
@@ -44,11 +112,19 @@ fn main() {
             commands::install_plugin,
             commands::uninstall_plugin,
             commands::install_plugin_from_file,
+            commands::install_plugin_from_registry,
+            commands::install_plugin_from_zip,
             commands::fetch_registry,
             commands::start_plugin_auth,
             commands::store_plugin_token,
             commands::get_settings,
             commands::save_settings,
+            commands::get_plugin_renderers,
+            commands::get_registry_sources,
+            commands::add_registry_source,
+            commands::remove_registry_source,
+            commands::toggle_registry_source,
+            commands::update_plugin,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

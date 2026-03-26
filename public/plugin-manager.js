@@ -6,8 +6,6 @@
 (function () {
   'use strict';
 
-  var DEFAULT_REGISTRY_URL = 'https://raw.githubusercontent.com/anthropics/mcp-registry/main/registry.json';
-
   // --- Tab Switching ---
 
   window.switchTab = function switchTab(tabName) {
@@ -48,18 +46,17 @@
     container.innerHTML = '<div class="loading">Loading registry...</div>';
 
     try {
-      var settings = await window.__TAURI__.core.invoke('get_settings');
-      var registryUrl = (settings && settings.registry_url) || null;
-      var entries = await window.__TAURI__.core.invoke('fetch_registry', { registryUrl: registryUrl });
+      var entries = await window.__TAURI__.core.invoke('fetch_registry', { registryUrl: null });
       var installed = await window.__TAURI__.core.invoke('list_plugins');
-      var installedNames = new Set(installed.map(function (p) { return p.name; }));
-      renderRegistryCards(container, entries, installedNames);
+      var installedMap = {};
+      installed.forEach(function (p) { installedMap[p.name] = p; });
+      renderRegistryCards(container, entries, installedMap);
     } catch (e) {
       container.innerHTML = '<div class="empty-state">Failed to load registry: ' + escapeHtml(String(e)) + '</div>';
     }
   }
 
-  function renderRegistryCards(container, entries, installedNames) {
+  function renderRegistryCards(container, entries, installedMap) {
     if (!entries || entries.length === 0) {
       container.innerHTML = '<div class="empty-state">No plugins found in registry.</div>';
       return;
@@ -75,21 +72,32 @@
       var name = entry.manifest ? entry.manifest.name : (entry.name || 'Unknown');
       var description = entry.manifest ? (entry.manifest.description || '') : (entry.description || '');
       var version = entry.manifest ? (entry.manifest.version || '') : (entry.version || '');
-      var isInstalled = installedNames.has(name);
+      var installedPlugin = installedMap[name];
+      var isInstalled = !!installedPlugin;
+      var hasUpdate = installedPlugin && installedPlugin.update_available;
+
+      var buttonHtml = hasUpdate
+        ? '<button class="btn btn-primary update-btn">Update to v' + escapeHtml(installedPlugin.update_available) + '</button>'
+        : isInstalled
+          ? '<button class="btn btn-muted" disabled>Installed</button>'
+          : '<button class="btn btn-primary install-btn">Install</button>';
 
       card.innerHTML =
         '<div class="plugin-name">' + escapeHtml(name) + '</div>' +
         '<div class="plugin-description">' + escapeHtml(description) + '</div>' +
         (version ? '<div class="plugin-version">v' + escapeHtml(version) + '</div>' : '') +
-        '<div style="margin-top:8px;">' +
-          (isInstalled
-            ? '<button class="btn btn-muted" disabled>Installed</button>'
-            : '<button class="btn btn-primary install-btn">Install</button>') +
-        '</div>';
+        '<div style="margin-top:8px;">' + buttonHtml + '</div>';
 
       if (!isInstalled) {
         card.querySelector('.install-btn').addEventListener('click', function () {
           installPlugin(entry);
+        });
+      }
+
+      var updateBtn = card.querySelector('.update-btn');
+      if (updateBtn) {
+        updateBtn.addEventListener('click', function () {
+          updatePlugin(name);
         });
       }
 
@@ -137,7 +145,15 @@
             : '<span class="auth-badge not-configured">Auth Needed</span>';
         }
 
+        var updateBadgeHtml = '';
+        if (plugin.update_available) {
+          updateBadgeHtml = '<span class="auth-badge" style="background:#1e1b4b;color:#818cf8">v' + escapeHtml(plugin.update_available) + ' available</span>';
+        }
+
         var actionsHtml = '';
+        if (plugin.update_available) {
+          actionsHtml += '<button class="btn btn-primary update-btn">Update</button>';
+        }
         if (hasAuth && !authConfigured) {
           actionsHtml += '<button class="btn btn-secondary configure-auth-btn">Configure Auth</button>';
         }
@@ -149,6 +165,7 @@
             '<div class="plugin-meta">' +
               (plugin.version ? 'v' + escapeHtml(plugin.version) : '') +
               (authBadgeHtml ? ' ' + authBadgeHtml : '') +
+              (updateBadgeHtml ? ' ' + updateBadgeHtml : '') +
             '</div>' +
           '</div>' +
           '<div class="plugin-actions">' + actionsHtml + '</div>';
@@ -164,6 +181,13 @@
         if (authBtn) {
           authBtn.addEventListener('click', function () {
             configureAuth(plugin.name);
+          });
+        }
+
+        var updateBtn = row.querySelector('.update-btn');
+        if (updateBtn) {
+          updateBtn.addEventListener('click', function () {
+            updatePlugin(plugin.name);
           });
         }
 
@@ -188,19 +212,32 @@
 
   async function installPlugin(entry) {
     try {
-      await window.__TAURI__.core.invoke('install_plugin', {
-        manifestJson: JSON.stringify(entry.manifest),
-      });
+      var btn = document.querySelector('.install-btn:not([disabled])');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = entry.download_url ? 'Downloading...' : 'Installing...';
+      }
+
+      if (entry.download_url) {
+        await window.__TAURI__.core.invoke('install_plugin_from_registry', {
+          entryJson: JSON.stringify(entry),
+        });
+      } else {
+        await window.__TAURI__.core.invoke('install_plugin', {
+          manifestJson: JSON.stringify(entry.manifest),
+        });
+      }
       loadRegistry();
       loadInstalled();
 
       // Auto-prompt auth if the plugin requires it
-      var auth = entry.manifest.mcp && entry.manifest.mcp.auth;
+      var auth = entry.manifest && entry.manifest.mcp && entry.manifest.mcp.auth;
       if (auth) {
         promptAuth(entry.manifest.name, auth);
       }
     } catch (e) {
       alert('Failed to install plugin: ' + e);
+      loadRegistry(); // Reset button states
     }
   }
 
@@ -214,14 +251,31 @@
     }
   }
 
+  async function updatePlugin(name) {
+    try {
+      await window.__TAURI__.core.invoke('update_plugin', { name: name });
+      showNotification('Plugin ' + name + ' updated');
+      loadInstalled();
+      loadRegistry();
+    } catch (e) {
+      alert('Failed to update plugin: ' + e);
+    }
+  }
+
   async function addCustomPlugin() {
     try {
       var path = await window.__TAURI__.dialog.open({
-        filters: [{ name: 'JSON Manifest', extensions: ['json'] }],
+        filters: [
+          { name: 'Plugin Package', extensions: ['zip', 'json'] },
+        ],
         multiple: false,
       });
       if (path) {
-        await window.__TAURI__.core.invoke('install_plugin_from_file', { path: path });
+        if (path.endsWith('.zip')) {
+          await window.__TAURI__.core.invoke('install_plugin_from_zip', { path: path });
+        } else {
+          await window.__TAURI__.core.invoke('install_plugin_from_file', { path: path });
+        }
         loadInstalled();
       }
     } catch (e) {
@@ -306,44 +360,117 @@
   // --- Settings Tab ---
 
   async function loadSettings() {
-    var input = document.getElementById('registry-url');
+    var container = document.getElementById('tab-settings');
+    container.innerHTML = '<div class="loading">Loading settings...</div>';
+
     try {
-      var settings = await window.__TAURI__.core.invoke('get_settings');
-      input.value = (settings && settings.registry_url) || DEFAULT_REGISTRY_URL;
+      var sources = await window.__TAURI__.core.invoke('get_registry_sources');
+      renderSourcesList(container, sources);
     } catch (e) {
-      input.value = DEFAULT_REGISTRY_URL;
+      container.innerHTML = '<div class="empty-state">Failed to load settings: ' + escapeHtml(String(e)) + '</div>';
     }
   }
 
-  window.resetRegistryUrl = function resetRegistryUrl() {
-    var input = document.getElementById('registry-url');
-    input.value = DEFAULT_REGISTRY_URL;
-    showSettingsMessage('Reset to default.', false);
-  };
+  function renderSourcesList(container, sources) {
+    container.innerHTML = '';
 
-  window.saveSettings = async function saveSettings() {
-    var input = document.getElementById('registry-url');
-    var url = input.value.trim();
-    if (!url) {
-      showSettingsMessage('URL cannot be empty.', true);
+    var section = document.createElement('div');
+    section.className = 'settings-section';
+    section.style.maxWidth = '600px';
+
+    var title = document.createElement('label');
+    title.textContent = 'Registry Sources';
+    title.style.marginBottom = '12px';
+    title.style.display = 'block';
+    section.appendChild(title);
+
+    var list = document.createElement('div');
+    list.className = 'installed-list';
+
+    sources.forEach(function(source) {
+      var row = document.createElement('div');
+      row.className = 'installed-row';
+      row.innerHTML =
+        '<div class="plugin-info" style="flex:1">' +
+          '<div class="plugin-name">' + escapeHtml(source.name) + '</div>' +
+          '<div class="plugin-meta" style="word-break:break-all">' + escapeHtml(source.url) + '</div>' +
+        '</div>' +
+        '<div class="plugin-actions">' +
+          '<button class="btn ' + (source.enabled ? 'btn-primary' : 'btn-secondary') + ' toggle-btn">' +
+            (source.enabled ? 'Enabled' : 'Disabled') +
+          '</button>' +
+          '<button class="btn btn-danger remove-source-btn">Remove</button>' +
+        '</div>';
+
+      row.querySelector('.toggle-btn').addEventListener('click', function() {
+        toggleSource(source.url);
+      });
+      row.querySelector('.remove-source-btn').addEventListener('click', function() {
+        removeSource(source.url);
+      });
+
+      list.appendChild(row);
+    });
+
+    section.appendChild(list);
+
+    // Add source form
+    var addForm = document.createElement('div');
+    addForm.style.marginTop = '16px';
+    addForm.innerHTML =
+      '<div style="display:flex;gap:8px;align-items:flex-end">' +
+        '<div style="flex:1">' +
+          '<label style="font-size:12px;color:#737373;display:block;margin-bottom:4px">Name</label>' +
+          '<input type="text" id="new-source-name" placeholder="My Registry" style="width:100%;padding:8px 12px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;color:#e5e5e5;font-size:13px;font-family:inherit;outline:none" />' +
+        '</div>' +
+        '<div style="flex:2">' +
+          '<label style="font-size:12px;color:#737373;display:block;margin-bottom:4px">URL</label>' +
+          '<input type="text" id="new-source-url" placeholder="https://example.com/registry.json" style="width:100%;padding:8px 12px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;color:#e5e5e5;font-size:13px;font-family:inherit;outline:none" />' +
+        '</div>' +
+        '<button class="btn btn-primary" id="add-source-btn">Add</button>' +
+      '</div>';
+    section.appendChild(addForm);
+
+    container.appendChild(section);
+
+    document.getElementById('add-source-btn').addEventListener('click', function() {
+      addSource();
+    });
+  }
+
+  async function addSource() {
+    var name = document.getElementById('new-source-name').value.trim();
+    var url = document.getElementById('new-source-url').value.trim();
+    if (!name || !url) {
+      showNotification('Name and URL are required', true);
       return;
     }
     try {
-      await window.__TAURI__.core.invoke('save_settings', { settings: { registry_url: url } });
-      showSettingsMessage('Settings saved.', false);
+      await window.__TAURI__.core.invoke('add_registry_source', { name: name, url: url });
+      showNotification('Registry source added');
+      loadSettings();
     } catch (e) {
-      showSettingsMessage('Failed to save: ' + e, true);
+      showNotification('Failed to add source: ' + e, true);
     }
-  };
+  }
 
-  function showSettingsMessage(msg, isError) {
-    var el = document.getElementById('settings-message');
-    el.textContent = msg;
-    el.className = isError ? 'error-msg' : '';
-    el.style.color = isError ? '#ef4444' : '#22c55e';
-    el.style.fontSize = '12px';
-    el.style.marginTop = '8px';
-    setTimeout(function () { el.textContent = ''; }, 3000);
+  async function removeSource(url) {
+    try {
+      await window.__TAURI__.core.invoke('remove_registry_source', { url: url });
+      showNotification('Registry source removed');
+      loadSettings();
+    } catch (e) {
+      showNotification('Failed to remove source: ' + e, true);
+    }
+  }
+
+  async function toggleSource(url) {
+    try {
+      await window.__TAURI__.core.invoke('toggle_registry_source', { url: url });
+      loadSettings();
+    } catch (e) {
+      showNotification('Failed to toggle source: ' + e, true);
+    }
   }
 
   // --- Utility ---

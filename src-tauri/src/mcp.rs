@@ -11,7 +11,8 @@ const SUPPORTED_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2025-03-26"];
 
 #[derive(Debug, Deserialize)]
 pub struct JsonRpcRequest {
-    pub jsonrpc: String,
+    #[serde(rename = "jsonrpc")]
+    pub _jsonrpc: String,
     pub id: Option<Value>,
     pub method: String,
     #[serde(default)]
@@ -88,7 +89,7 @@ async fn handle_single_request(
                 serde_json::json!({
                     "protocolVersion": negotiated,
                     "capabilities": {
-                        "tools": {}
+                        "tools": { "listChanged": true }
                     },
                     "serverInfo": {
                         "name": "mcp-mux",

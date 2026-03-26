@@ -1,4 +1,4 @@
-use crate::{cache_dir, config_path, RemoteRegistry, RegistryEntry};
+use crate::{cache_dir, config_path, RegistrySource, RemoteRegistry, RegistryEntry};
 
 pub const DEFAULT_REGISTRY_URL: &str =
     "https://raw.githubusercontent.com/anthropics/mcp-mux-registry/main/registry.json";
@@ -59,6 +59,165 @@ pub async fn fetch_registry(
 
     let registry: RemoteRegistry = serde_json::from_str(&body)
         .map_err(|e| format!("Failed to parse registry: {}", e))?;
+
+    // Write to cache
+    let _ = std::fs::create_dir_all(cache_dir());
+    let _ = std::fs::write(&cache_path, &body);
+
+    Ok(registry.plugins)
+}
+
+/// Read registry sources from config.json. Falls back to single registry_url or default.
+pub fn get_registry_sources() -> Vec<RegistrySource> {
+    if let Ok(content) = std::fs::read_to_string(config_path()) {
+        if let Ok(config) = serde_json::from_str::<serde_json::Value>(&content) {
+            // Check for new multi-source format first
+            if let Some(sources) = config.get("registry_sources") {
+                if let Ok(sources) = serde_json::from_value::<Vec<RegistrySource>>(sources.clone())
+                {
+                    if !sources.is_empty() {
+                        return sources;
+                    }
+                }
+            }
+            // Fall back to single URL
+            if let Some(url) = config.get("registry_url").and_then(|v| v.as_str()) {
+                return vec![RegistrySource {
+                    name: "Default".to_string(),
+                    url: url.to_string(),
+                    enabled: true,
+                }];
+            }
+        }
+    }
+    vec![RegistrySource {
+        name: "Default".to_string(),
+        url: DEFAULT_REGISTRY_URL.to_string(),
+        enabled: true,
+    }]
+}
+
+/// Save registry sources to config.json (preserving other config fields)
+pub fn save_registry_sources(sources: &[RegistrySource]) -> Result<(), String> {
+    let path = config_path();
+    let mut config = if let Ok(content) = std::fs::read_to_string(&path) {
+        serde_json::from_str::<serde_json::Value>(&content).unwrap_or(serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    config["registry_sources"] = serde_json::to_value(sources)
+        .map_err(|e| format!("Failed to serialize sources: {}", e))?;
+
+    // Remove legacy registry_url if present
+    if let Some(obj) = config.as_object_mut() {
+        obj.remove("registry_url");
+    }
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create config dir: {}", e))?;
+    }
+    std::fs::write(&path, serde_json::to_string_pretty(&config).unwrap())
+        .map_err(|e| format!("Failed to write config: {}", e))?;
+
+    Ok(())
+}
+
+/// Fetch from all enabled registry sources, merge results (last source wins on name conflict)
+pub async fn fetch_all_registries(
+    client: &reqwest::Client,
+    sources: &[RegistrySource],
+) -> Result<Vec<RegistryEntry>, String> {
+    let mut all_entries: Vec<RegistryEntry> = Vec::new();
+    let mut seen_names: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    let mut any_success = false;
+
+    for source in sources {
+        if !source.enabled {
+            continue;
+        }
+
+        // Use per-source cache file
+        match fetch_registry_with_cache(client, &source.url, &source.name).await {
+            Ok(entries) => {
+                any_success = true;
+                for entry in entries {
+                    if let Some(idx) = seen_names.get(&entry.name) {
+                        // Replace with newer version if available
+                        all_entries[*idx] = entry;
+                    } else {
+                        seen_names.insert(entry.name.clone(), all_entries.len());
+                        all_entries.push(entry);
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!(
+                    "[mcp-mux] Failed to fetch registry '{}': {}",
+                    source.name, e
+                );
+            }
+        }
+    }
+
+    if !any_success && !sources.is_empty() {
+        return Err("Failed to fetch from any registry source".to_string());
+    }
+
+    Ok(all_entries)
+}
+
+/// Fetch with per-source cache
+async fn fetch_registry_with_cache(
+    client: &reqwest::Client,
+    url: &str,
+    source_name: &str,
+) -> Result<Vec<RegistryEntry>, String> {
+    // Per-source cache file based on a simple hash of the URL
+    let hash = url
+        .bytes()
+        .fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64));
+    let cache_path = cache_dir().join(format!("registry-{:x}.json", hash));
+
+    // Check cache
+    if let Ok(metadata) = std::fs::metadata(&cache_path) {
+        if let Ok(modified) = metadata.modified() {
+            if modified
+                .elapsed()
+                .map(|d| d.as_secs())
+                .unwrap_or(u64::MAX)
+                < CACHE_TTL_SECS
+            {
+                if let Ok(content) = std::fs::read_to_string(&cache_path) {
+                    if let Ok(registry) = serde_json::from_str::<RemoteRegistry>(&content) {
+                        return Ok(registry.plugins);
+                    }
+                }
+            }
+        }
+    }
+
+    // Fetch from remote
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch '{}': {}", source_name, e))?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "'{}' returned HTTP {}",
+            source_name,
+            resp.status()
+        ));
+    }
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response from '{}': {}", source_name, e))?;
+    let registry: RemoteRegistry = serde_json::from_str(&body)
+        .map_err(|e| format!("Failed to parse registry '{}': {}", source_name, e))?;
 
     // Write to cache
     let _ = std::fs::create_dir_all(cache_dir());

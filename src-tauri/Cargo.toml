@@ -20,8 +20,12 @@ tower-http = { version = "0.6", features = ["cors"] }
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 reqwest = { version = "0.12", features = ["json"] }
+sha2 = "0.10"
+base64 = "0.22"
 dirs = "5"
 mcp-mux-shared = { path = "../shared" }
+semver = "1"
+tokio-stream = { version = "0.1", features = ["sync"] }
 
 [dev-dependencies]
 tempfile = "3"

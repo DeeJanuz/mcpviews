@@ -1,3 +1,4 @@
+pub mod package;
 pub mod plugin_store;
 pub mod registry;
 pub mod token_store;
@@ -35,7 +36,8 @@ pub enum PluginAuth {
         key_env: Option<String>,
     },
     OAuth {
-        client_id: String,
+        #[serde(default)]
+        client_id: Option<String>,
         auth_url: String,
         token_url: String,
         #[serde(default)]
@@ -158,6 +160,20 @@ pub struct RegistryEntry {
     pub manifest: PluginManifest,
     #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default)]
+    pub download_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegistrySource {
+    pub name: String,
+    pub url: String,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+}
+
+fn default_enabled() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -168,6 +184,7 @@ pub struct PluginInfo {
     pub auth_type: Option<String>,
     pub auth_configured: bool,
     pub tool_count: usize,
+    pub update_available: Option<String>,
 }
 
 pub fn plugins_dir() -> PathBuf {
@@ -222,7 +239,7 @@ mod tests {
     #[test]
     fn test_display_name_oauth() {
         let auth = PluginAuth::OAuth {
-            client_id: "id".to_string(),
+            client_id: Some("id".to_string()),
             auth_url: "https://example.com/auth".to_string(),
             token_url: "https://example.com/token".to_string(),
             scopes: vec![],
@@ -294,7 +311,7 @@ mod tests {
     fn test_is_configured_oauth_no_stored_token() {
         let dir = tempfile::tempdir().unwrap();
         let auth = PluginAuth::OAuth {
-            client_id: "id".to_string(),
+            client_id: Some("id".to_string()),
             auth_url: "https://example.com/auth".to_string(),
             token_url: "https://example.com/token".to_string(),
             scopes: vec![],
@@ -364,6 +381,7 @@ mod tests {
             auth_type: Some("bearer".to_string()),
             auth_configured: true,
             tool_count: 0,
+            update_available: None,
         };
         assert!(info.auth_configured);
 
@@ -374,6 +392,7 @@ mod tests {
             auth_type: Some("oauth".to_string()),
             auth_configured: false,
             tool_count: 0,
+            update_available: None,
         };
         assert!(!info2.auth_configured);
     }
@@ -392,7 +411,7 @@ mod tests {
         assert_eq!(format!("{}", auth), "api_key");
 
         let auth = PluginAuth::OAuth {
-            client_id: "id".to_string(),
+            client_id: Some("id".to_string()),
             auth_url: "https://example.com/auth".to_string(),
             token_url: "https://example.com/token".to_string(),
             scopes: vec![],
@@ -438,7 +457,7 @@ mod tests {
     #[test]
     fn test_serde_roundtrip_oauth() {
         let auth = PluginAuth::OAuth {
-            client_id: "client123".to_string(),
+            client_id: Some("client123".to_string()),
             auth_url: "https://example.com/auth".to_string(),
             token_url: "https://example.com/token".to_string(),
             scopes: vec!["read".to_string(), "write".to_string()],
@@ -452,7 +471,7 @@ mod tests {
             scopes,
         } = parsed
         {
-            assert_eq!(client_id, "client123");
+            assert_eq!(client_id, Some("client123".to_string()));
             assert_eq!(auth_url, "https://example.com/auth");
             assert_eq!(token_url, "https://example.com/token");
             assert_eq!(scopes, vec!["read", "write"]);

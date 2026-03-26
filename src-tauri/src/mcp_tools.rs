@@ -264,7 +264,7 @@ async fn auto_push_plugin_result(
     tool_name: &str,
     _arguments: &Value,
     mcp_result: &Value,
-    _renderer_map: &std::collections::HashMap<String, String>,
+    renderer_map: &std::collections::HashMap<String, String>,
 ) {
     // Extract text content from MCP result
     let data = if let Some(content) = mcp_result.get("content").and_then(|c| c.as_array()) {
@@ -285,7 +285,11 @@ async fn auto_push_plugin_result(
         mcp_result.clone()
     };
 
-    let display_tool = tool_name.to_string();
+    // Use renderer_map to map tool_name -> content_type for display, fallback to tool_name
+    let display_tool = renderer_map
+        .get(tool_name)
+        .cloned()
+        .unwrap_or_else(|| tool_name.to_string());
 
     let _ = execute_push(
         state,
@@ -316,7 +320,7 @@ fn builtin_tool_definitions() -> Vec<Value> {
                     },
                     "data": {
                         "type": "object",
-                        "description": "Content payload matching the expected format for the chosen tool_name renderer."
+                        "description": "Content payload. For rich_content: { \"title\": \"Optional heading\", \"body\": \"Markdown content with ```mermaid blocks, tables, etc.\" }. The 'body' field is required and supports full markdown + mermaid diagrams. For other tool_name types, pass the structured data matching that renderer's expected shape."
                     },
                     "meta": {
                         "type": "object",

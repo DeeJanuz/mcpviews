@@ -1,16 +1,22 @@
 use axum::{
     extract::{Extension, Json},
-    http::{Method, StatusCode},
-    response::IntoResponse,
+    http::{HeaderMap, Method, StatusCode},
+    response::{
+        sse::{Event, KeepAlive, Sse},
+        IntoResponse,
+    },
     routing::{get, post},
     Router,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::Mutex as TokioMutex;
+use tokio_stream::wrappers::BroadcastStream;
+use tokio_stream::StreamExt;
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::mcp;
@@ -32,8 +38,8 @@ pub struct PushRequest {
     pub result: PushResult,
     #[serde(default)]
     pub review_required: Option<bool>,
-    #[serde(default)]
-    pub open_browser: Option<bool>,
+    #[serde(default, rename = "openBrowser")]
+    pub _open_browser: Option<bool>,
     #[serde(default)]
     pub timeout: Option<u64>,
     #[serde(default)]
@@ -75,18 +81,6 @@ struct HealthResponse {
 /// Detect content type from tool name (mirrors companion ws-handler.ts logic)
 fn detect_content_type(tool_name: &str) -> String {
     match tool_name {
-        "search_codebase" | "vector_search" => "search_results".to_string(),
-        "get_code_units" => "code_units".to_string(),
-        "get_document" => "document_preview".to_string(),
-        "write_document" | "propose_actions" => "document_diff".to_string(),
-        "get_data_schema" => "data_schema".to_string(),
-        "manage_data_draft" => "data_draft_diff".to_string(),
-        "get_dependencies" => "dependencies".to_string(),
-        "get_file_content" => "file_content".to_string(),
-        "get_module_overview" => "module_overview".to_string(),
-        "get_analysis_stats" => "analysis_stats".to_string(),
-        "get_business_concepts" | "manage_knowledge_entries" => "knowledge_dex".to_string(),
-        "get_column_context" => "column_context".to_string(),
         "rich_content" | "push_to_companion" => "rich_content".to_string(),
         _ => "rich_content".to_string(),
     }
@@ -320,12 +314,102 @@ async fn heartbeat_handler(
     }
 }
 
-async fn mcp_endpoint(
+async fn mcp_sse_handler(
+    headers: HeaderMap,
+    Extension(state): Extension<Arc<TokioMutex<AsyncAppState>>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    // Verify Accept header
+    let accept = headers
+        .get("accept")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if !accept.contains("text/event-stream") {
+        return Err(StatusCode::NOT_ACCEPTABLE);
+    }
+
+    let state_guard = state.lock().await;
+    let (session_id, rx) = {
+        let mut sessions = state_guard.inner.mcp_sessions.lock().unwrap();
+        sessions.create_session()
+    };
+    drop(state_guard);
+
+    let stream = BroadcastStream::new(rx)
+        .filter_map(|result: Result<String, _>| result.ok())
+        .map(|data| -> Result<Event, Infallible> { Ok(Event::default().data(data)) });
+
+    let sse = Sse::new(stream).keep_alive(KeepAlive::default());
+
+    Ok(([("mcp-session-id", session_id)], sse))
+}
+
+async fn mcp_post_handler(
+    headers: HeaderMap,
     Extension(state): Extension<Arc<TokioMutex<AsyncAppState>>>,
     body: String,
-) -> (StatusCode, Json<serde_json::Value>) {
+) -> Result<(StatusCode, Json<serde_json::Value>), StatusCode> {
+    // If session header present, verify it exists
+    if let Some(session_id) = headers
+        .get("mcp-session-id")
+        .and_then(|v| v.to_str().ok())
+    {
+        let state_guard = state.lock().await;
+        let exists = {
+            let sessions = state_guard.inner.mcp_sessions.lock().unwrap();
+            sessions.has_session(session_id)
+        };
+        drop(state_guard);
+        if !exists {
+            return Err(StatusCode::NOT_FOUND);
+        }
+    }
     let (status, value) = mcp::mcp_handler(state, body).await;
-    (status, Json(value))
+    Ok((status, Json(value)))
+}
+
+async fn mcp_delete_handler(
+    headers: HeaderMap,
+    Extension(state): Extension<Arc<TokioMutex<AsyncAppState>>>,
+) -> StatusCode {
+    let session_id = match headers
+        .get("mcp-session-id")
+        .and_then(|v| v.to_str().ok())
+    {
+        Some(id) => id.to_string(),
+        None => return StatusCode::BAD_REQUEST,
+    };
+    let state_guard = state.lock().await;
+    let removed = {
+        let mut sessions = state_guard.inner.mcp_sessions.lock().unwrap();
+        sessions.remove_session(&session_id)
+    };
+    if removed {
+        StatusCode::OK
+    } else {
+        StatusCode::NOT_FOUND
+    }
+}
+
+async fn reload_plugins_handler(
+    Extension(state): Extension<Arc<TokioMutex<AsyncAppState>>>,
+) -> StatusCode {
+    let state_guard = state.lock().await;
+    let new_registry = crate::plugin::PluginRegistry::load_plugins();
+    {
+        let mut registry = state_guard.inner.plugin_registry.lock().unwrap();
+        *registry = new_registry;
+    }
+    // Broadcast tools/list_changed notification to all SSE sessions
+    let notification = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/tools/list_changed"
+    })
+    .to_string();
+    {
+        let sessions = state_guard.inner.mcp_sessions.lock().unwrap();
+        sessions.broadcast(&notification);
+    }
+    StatusCode::OK
 }
 
 pub async fn start_http_server(app_state: Arc<AppState>, app_handle: AppHandle) {
@@ -339,14 +423,21 @@ pub async fn start_http_server(app_state: Arc<AppState>, app_handle: AppHandle) 
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
-        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
-        .allow_headers(Any);
+        .allow_methods([Method::GET, Method::POST, Method::DELETE, Method::OPTIONS])
+        .allow_headers(Any)
+        .expose_headers(["mcp-session-id".parse::<axum::http::HeaderName>().unwrap()]);
 
     let app = Router::new()
         .route("/health", get(health_handler))
         .route("/api/push", post(push_handler))
         .route("/api/heartbeat", post(heartbeat_handler))
-        .route("/mcp", post(mcp_endpoint))
+        .route("/api/reload-plugins", post(reload_plugins_handler))
+        .route(
+            "/mcp",
+            get(mcp_sse_handler)
+                .post(mcp_post_handler)
+                .delete(mcp_delete_handler),
+        )
         .layer(cors)
         .layer(Extension(async_state));
 
@@ -363,6 +454,11 @@ pub async fn start_http_server(app_state: Arc<AppState>, app_handle: AppHandle) 
             let mut deadlines = gc_state.review_deadlines.lock().unwrap();
             let reviews = gc_state.reviews.lock().unwrap();
             deadlines.retain(|id, _| reviews.has_pending(id));
+            drop(deadlines);
+            drop(reviews);
+            // GC MCP SSE sessions with no active receivers
+            let mut mcp_sessions = gc_state.mcp_sessions.lock().unwrap();
+            mcp_sessions.retain_active();
         }
     });
 

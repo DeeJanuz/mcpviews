@@ -81,10 +81,4 @@ impl SessionStore {
         before - self.entries.len()
     }
 
-    pub fn pending_review_count(&self) -> usize {
-        self.entries
-            .values()
-            .filter(|e| e.session.review_required && e.session.decided_at.is_none())
-            .count()
-    }
 }

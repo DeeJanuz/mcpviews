@@ -21,7 +21,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:4200; img-src 'self' data: blob:"
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net plugin://localhost; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com plugin://localhost; font-src 'self' https://fonts.gstatic.com plugin://localhost; connect-src 'self' http://localhost:4200; img-src 'self' data: blob: plugin://localhost"
     }
   },
   "bundle": {
@@ -40,9 +40,6 @@
   },
   "plugins": {
     "shell": {
-      "open": true
-    },
-    "dialog": {
       "open": true
     }
   }

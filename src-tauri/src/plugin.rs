@@ -17,6 +17,10 @@ impl PluginRegistry {
     /// Load all plugin manifests from ~/.mcp-mux/plugins/
     pub fn load_plugins() -> Self {
         let store = PluginStore::new();
+        // Migrate legacy flat-file plugins to directory format
+        if let Err(e) = store.migrate_legacy() {
+            eprintln!("[mcp-mux] Legacy plugin migration warning: {}", e);
+        }
         let manifests = match store.list() {
             Ok(m) => m,
             Err(e) => {
@@ -154,13 +158,8 @@ impl PluginRegistry {
         Ok(())
     }
 
-    /// Rebuild the tool_index from scratch based on current plugins and their cached tools.
-    pub fn rebuild_tool_index(&mut self) {
-        self.tool_cache.rebuild_index();
-    }
-
-    /// Return info about all loaded plugins.
-    pub fn list_plugins(&self) -> Vec<PluginInfo> {
+    /// Return info about all loaded plugins, checking for updates against registry.
+    pub fn list_plugins_with_updates(&self, registry_entries: &[mcp_mux_shared::RegistryEntry]) -> Vec<PluginInfo> {
         self.manifests
             .iter()
             .enumerate()
@@ -174,6 +173,21 @@ impl PluginRegistry {
                     .and_then(|m| m.auth.as_ref())
                     .map(|a| a.is_configured(&manifest.name))
                     .unwrap_or(true); // no auth needed = considered "configured"
+
+                // Check for updates
+                let update_available = registry_entries
+                    .iter()
+                    .find(|e| e.name == manifest.name)
+                    .and_then(|e| {
+                        let installed = semver::Version::parse(&manifest.version).ok()?;
+                        let available = semver::Version::parse(&e.version).ok()?;
+                        if available > installed {
+                            Some(e.version.clone())
+                        } else {
+                            None
+                        }
+                    });
+
                 PluginInfo {
                     name: manifest.name.clone(),
                     version: manifest.version.clone(),
@@ -181,6 +195,7 @@ impl PluginRegistry {
                     auth_type,
                     auth_configured,
                     tool_count: self.tool_cache.tool_count(i),
+                    update_available,
                 }
             })
             .collect()
