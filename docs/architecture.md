@@ -56,7 +56,7 @@ MCP Agent → POST localhost:4200/api/push
 | `tool_cache.rs` | `ToolCache` — per-plugin tool caching with 5-minute TTL, prefixed tool name indexing, and stale-detection logic (extracted from PluginRegistry) |
 | `mcp_tools.rs` | MCP tool definitions and dispatch. Built-in tools: `push_content`, `push_review`, `push_check`, `setup_agent_rules`. Plugin tool proxy with automatic OAuth token refresh on expired tokens. Renderer definitions (built-in + plugin) are collected and used to dynamically populate tool descriptions and MCP `initialize` instructions. `call_setup_agent_rules` delegates to extracted pure functions: `collect_rules(builtin_renderers, manifests)`, `collect_plugin_auth_status(manifests)`, and `persistence_instructions(agent_type)`. Includes 13 unit tests for all extracted helpers |
 | `auth.rs` | Plugin authentication — OAuth browser-redirect flow with ephemeral localhost callback server. Token storage and loading delegate to `shared::token_store`. Includes `refresh_oauth_token()` for automatic refresh_token grant when access tokens expire |
-| `scripts/` | Bundled installer scripts for agent integration setup: `setup-integrations.sh` (Linux/macOS) and `setup-integrations.ps1` (Windows) |
+| `scripts/` | Bundled installer scripts for agent integration setup: `setup-integrations.sh` (Linux/macOS) and `setup-integrations.ps1` (Windows). Generates platform-specific MCP configs: Claude Desktop receives an `mcp-remote` bridge entry (`npx mcp-remote`) because it only supports stdio transport, while all other JSON-based platforms (Claude Code CLI, etc.) receive a direct HTTP URL entry |
 
 ### Frontend (`src/` + `public/`)
 
