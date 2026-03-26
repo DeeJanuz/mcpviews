@@ -760,7 +760,7 @@ mod tests {
 
     #[test]
     fn test_collect_plugin_auth_status_oauth_not_configured() {
-        let dir = tempfile::tempdir().unwrap();
+        let _dir = tempfile::tempdir().unwrap();
         // Point auth_dir to empty temp dir so no tokens are found
         // We need to use a plugin name that won't have a stored token
         let manifest = make_manifest(

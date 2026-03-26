@@ -365,3 +365,121 @@ pub async fn update_plugin(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    fn test_manifest(name: &str) -> PluginManifest {
+        PluginManifest {
+            name: name.to_string(),
+            version: "1.0.0".to_string(),
+            renderers: std::collections::HashMap::new(),
+            mcp: None,
+            renderer_definitions: vec![],
+            tool_rules: std::collections::HashMap::new(),
+        }
+    }
+
+    fn test_registry_entry(name: &str) -> RegistryEntry {
+        RegistryEntry {
+            name: name.to_string(),
+            version: "1.0.0".to_string(),
+            description: "Test plugin".to_string(),
+            author: None,
+            homepage: None,
+            manifest: test_manifest(name),
+            tags: vec![],
+            download_url: None,
+        }
+    }
+
+    fn test_app_state() -> (Arc<AppState>, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let store = mcp_mux_shared::plugin_store::PluginStore::with_dir(dir.path().to_path_buf());
+        (Arc::new(AppState::new_with_store(store)), dir)
+    }
+
+    #[test]
+    fn test_get_health() {
+        let health = get_health();
+        assert_eq!(health["status"], "ok");
+        assert!(health["version"].is_string());
+    }
+
+    #[test]
+    fn test_get_registry_sources() {
+        let sources = get_registry_sources();
+        let _ = sources.len();
+    }
+
+    #[tokio::test]
+    async fn test_install_from_entry_manifest_only() {
+        let (state, _dir) = test_app_state();
+        let entry = test_registry_entry("test-plugin");
+
+        install_or_update_from_entry(&entry, &state).await.unwrap();
+
+        let registry = state.plugin_registry.lock().unwrap();
+        assert_eq!(registry.manifests.len(), 1);
+        assert_eq!(registry.manifests[0].name, "test-plugin");
+    }
+
+    #[tokio::test]
+    async fn test_install_from_entry_replaces_existing() {
+        let (state, _dir) = test_app_state();
+        let entry = test_registry_entry("dup-plugin");
+
+        install_or_update_from_entry(&entry, &state).await.unwrap();
+        install_or_update_from_entry(&entry, &state).await.unwrap();
+
+        let registry = state.plugin_registry.lock().unwrap();
+        let count = registry.manifests.iter().filter(|m| m.name == "dup-plugin").count();
+        assert_eq!(count, 1, "Should not have duplicate entries");
+    }
+
+    #[test]
+    fn test_install_plugin_logic() {
+        let (state, _dir) = test_app_state();
+        let manifest = test_manifest("logic-test");
+        let manifest_json = serde_json::to_string(&manifest).unwrap();
+
+        let parsed: PluginManifest = serde_json::from_str(&manifest_json).unwrap();
+        let mut registry = state.plugin_registry.lock().unwrap();
+        registry.add_plugin(parsed).unwrap();
+        drop(registry);
+
+        let registry = state.plugin_registry.lock().unwrap();
+        assert_eq!(registry.manifests.len(), 1);
+        assert_eq!(registry.manifests[0].name, "logic-test");
+    }
+
+    #[test]
+    fn test_uninstall_plugin_logic() {
+        let (state, _dir) = test_app_state();
+
+        {
+            let mut registry = state.plugin_registry.lock().unwrap();
+            registry.add_plugin(test_manifest("removeme")).unwrap();
+            assert_eq!(registry.manifests.len(), 1);
+        }
+
+        {
+            let mut registry = state.plugin_registry.lock().unwrap();
+            registry.remove_plugin("removeme").unwrap();
+        }
+
+        let registry = state.plugin_registry.lock().unwrap();
+        assert!(registry.manifests.is_empty(), "Plugin should be removed");
+    }
+
+    #[test]
+    fn test_list_plugins_empty() {
+        let (state, _dir) = test_app_state();
+        let registry = state.plugin_registry.lock().unwrap();
+        let cached = state.latest_registry.lock().unwrap();
+        let plugins = registry.list_plugins_with_updates(&cached);
+        assert!(plugins.is_empty());
+    }
+}

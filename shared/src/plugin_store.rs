@@ -18,6 +18,11 @@ impl PluginStore {
         Self { dir }
     }
 
+    /// Return a reference to the plugin directory path.
+    pub fn dir(&self) -> &std::path::Path {
+        &self.dir
+    }
+
     /// Return the plugin directory path for a given plugin name
     pub fn plugin_dir(&self, name: &str) -> PathBuf {
         self.dir.join(name)
