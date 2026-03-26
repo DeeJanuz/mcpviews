@@ -1,5 +1,6 @@
 pub mod plugin_store;
 pub mod registry;
+pub mod token_store;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -68,8 +69,7 @@ impl PluginAuth {
 
     /// Check if auth is configured, with a custom auth directory (for testing).
     pub fn is_configured_with_auth_dir(&self, plugin_name: &str, dir: &std::path::Path) -> bool {
-        let path = dir.join(format!("{}.json", plugin_name));
-        if path.exists() {
+        if token_store::has_stored_token(dir, plugin_name) {
             return true;
         }
         // For Bearer/ApiKey: also check env var as fallback
@@ -101,13 +101,8 @@ impl PluginAuth {
         match self {
             PluginAuth::Bearer { token_env } => {
                 // Check stored token first
-                let path = dir.join(format!("{}.json", plugin_name));
-                if let Ok(content) = std::fs::read_to_string(&path) {
-                    if let Ok(stored) = serde_json::from_str::<serde_json::Value>(&content) {
-                        if let Some(token) = stored.get("access_token").and_then(|v| v.as_str()) {
-                            return Some(format!("Bearer {}", token));
-                        }
-                    }
+                if let Some(stored) = token_store::load_stored_token(dir, plugin_name) {
+                    return Some(format!("Bearer {}", stored.access_token));
                 }
                 // Fall back to env var
                 match std::env::var(token_env) {
@@ -123,13 +118,8 @@ impl PluginAuth {
                 key_env,
             } => {
                 // Check stored token first
-                let path = dir.join(format!("{}.json", plugin_name));
-                if let Ok(content) = std::fs::read_to_string(&path) {
-                    if let Ok(stored) = serde_json::from_str::<serde_json::Value>(&content) {
-                        if let Some(key) = stored.get("access_token").and_then(|v| v.as_str()) {
-                            return Some(format!("{}:{}", header_name, key));
-                        }
-                    }
+                if let Some(stored) = token_store::load_stored_token(dir, plugin_name) {
+                    return Some(format!("{}:{}", header_name, stored.access_token));
                 }
                 // Fall back to env var
                 if let Some(env_var) = key_env {
@@ -145,27 +135,8 @@ impl PluginAuth {
                 }
             }
             PluginAuth::OAuth { .. } => {
-                let path = dir.join(format!("{}.json", plugin_name));
-                let content = std::fs::read_to_string(&path).ok()?;
-                let stored: serde_json::Value = serde_json::from_str(&content).ok()?;
-
-                // Check if token has expired
-                if let Some(expires_at) = stored.get("expires_at").and_then(|v| v.as_i64()) {
-                    let now = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs() as i64;
-                    if now >= expires_at {
-                        eprintln!(
-                            "[mcp-mux] OAuth token for plugin '{}' has expired",
-                            plugin_name
-                        );
-                        return None;
-                    }
-                }
-
-                let access_token = stored.get("access_token")?.as_str()?;
-                Some(format!("Bearer {}", access_token))
+                let stored = token_store::load_stored_token(dir, plugin_name)?;
+                Some(format!("Bearer {}", stored.access_token))
             }
         }
     }

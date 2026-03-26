@@ -1,13 +1,6 @@
 use mcp_mux_shared::auth_dir;
-use serde::{Deserialize, Serialize};
+use mcp_mux_shared::token_store::StoredToken;
 use std::collections::HashMap;
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct StoredToken {
-    pub access_token: String,
-    pub refresh_token: Option<String>,
-    pub expires_at: Option<i64>, // unix timestamp
-}
 
 /// Start an OAuth authorization code flow:
 /// 1. Spin up ephemeral Axum HTTP server on 127.0.0.1:0 (random port)
@@ -180,36 +173,12 @@ fn open_browser(url: &str) -> Result<(), String> {
 
 /// Store an OAuth token to ~/.mcp-mux/auth/{plugin_name}.json
 pub fn store_token(plugin_name: &str, token: &StoredToken) -> Result<(), String> {
-    let dir = auth_dir();
-    std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create auth dir: {}", e))?;
-    let path = dir.join(format!("{}.json", plugin_name));
-    let json = serde_json::to_string_pretty(token)
-        .map_err(|e| format!("Failed to serialize token: {}", e))?;
-    std::fs::write(&path, json).map_err(|e| format!("Failed to write token: {}", e))?;
-    Ok(())
+    mcp_mux_shared::token_store::store_token(&auth_dir(), plugin_name, token)
 }
 
 /// Load a stored OAuth token for a plugin, returning None if expired
 pub fn load_token(plugin_name: &str) -> Option<String> {
-    let path = auth_dir().join(format!("{}.json", plugin_name));
-    let content = std::fs::read_to_string(&path).ok()?;
-    let stored: StoredToken = serde_json::from_str(&content).ok()?;
-
-    // Check if token has expired
-    if let Some(expires_at) = stored.expires_at {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs() as i64;
-        if now >= expires_at {
-            eprintln!(
-                "[mcp-mux] OAuth token for plugin '{}' has expired",
-                plugin_name
-            );
-            return None;
-        }
-    }
-
+    let stored = mcp_mux_shared::token_store::load_stored_token(&auth_dir(), plugin_name)?;
     Some(stored.access_token)
 }
 
