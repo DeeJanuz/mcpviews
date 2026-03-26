@@ -9,6 +9,35 @@ A standalone Tauri v2 desktop app that serves as a rich display for AI agents. R
 - **Node.js sidecar**: SSE bridge for remote server connections
 - **System tray**: Hide-to-tray, click to show, auto-start on login
 
+## Installation
+
+**macOS / Windows**: Download the latest release from [Releases](https://github.com/DeeJanuz/mcp-mux/releases).
+
+**Linux** (build from source):
+
+```bash
+# Prerequisites: Rust, Node.js 20+, and system libraries
+# Debian/Ubuntu:
+sudo apt install libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+# Fedora:
+sudo dnf install webkit2gtk4.1-devel libappindicator-gtk3-devel librsvg2-devel
+
+# Arch:
+sudo pacman -S webkit2gtk-4.1 libappindicator-gtk3 librsvg
+
+# Build
+git clone https://github.com/DeeJanuz/mcp-mux.git
+cd mcp-mux
+npm install
+npm run build
+
+# The binary is at src-tauri/target/release/mcp-mux
+# Or install the Tauri CLI for a bundled .deb/.AppImage:
+cargo install tauri-cli
+cargo tauri build
+```
+
 ## Development
 
 ```bash
