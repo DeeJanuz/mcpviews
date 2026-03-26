@@ -163,7 +163,7 @@ Returns all installed plugins.
 ```javascript
 const plugins = await invoke('list_plugins');
 // Returns: PluginInfo[]
-// PluginInfo: { name, version, has_mcp, auth_type, tool_count }
+// PluginInfo: { name, version, has_mcp, auth_type, auth_configured, tool_count }
 ```
 
 ### `install_plugin`
@@ -202,11 +202,19 @@ const entries = await invoke('fetch_registry', { registryUrl: null });
 
 ### `start_plugin_auth`
 
-Initiate authentication for a plugin. Starts OAuth browser flow for OAuth plugins, or resolves env vars for Bearer/ApiKey plugins.
+Initiate the OAuth browser-redirect flow for an OAuth plugin.
 
 ```javascript
 const token = await invoke('start_plugin_auth', { pluginName: 'my-plugin' });
 // Returns: token string on success
+```
+
+### `store_plugin_token`
+
+Store a Bearer token or API key for a plugin. Saves to `~/.mcp-mux/auth/<pluginName>.json`.
+
+```javascript
+await invoke('store_plugin_token', { pluginName: 'my-plugin', token: 'sk-abc123' });
 ```
 
 ### `get_settings`

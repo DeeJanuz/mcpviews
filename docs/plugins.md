@@ -186,11 +186,16 @@ Map each of your tools to the renderer that best fits its output in the `rendere
 
 Choose the auth type that matches your server:
 
-- **Bearer token** -- simplest option. User sets an environment variable with their API key.
-- **API key header** -- for services that use a custom header name.
+- **Bearer token** -- simplest option. After install, a modal prompts the user to enter their token. The token is stored in `~/.mcp-mux/auth/<plugin-name>.json`. Falls back to reading from the environment variable if no stored token exists.
+- **API key header** -- for services that use a custom header name. Same storage and fallback behavior as bearer tokens.
 - **OAuth** -- for services requiring browser-based login. MCP Mux handles the redirect flow. Tokens are stored in `~/.mcp-mux/auth/` and checked for expiry on each use; expired tokens are rejected rather than silently sent.
 
-Auth resolution is centralized in the `PluginAuth::resolve_header()` method in the shared crate. Each variant knows how to produce the appropriate HTTP authorization header value.
+Auth resolution is centralized in the `PluginAuth::resolve_header()` method in the shared crate. For Bearer and API Key auth, the resolution order is:
+
+1. **Stored token** -- check `~/.mcp-mux/auth/<plugin-name>.json` for a saved `access_token`
+2. **Environment variable** -- fall back to the configured `token_env` / `key_env` variable
+
+This means users no longer need to set environment variables manually. After installing a plugin that requires Bearer or API Key auth, MCP Mux immediately prompts for the token via a modal dialog. The token can also be configured later via the "Configure Auth" button in the Plugin Manager.
 
 ### 4. Create the manifest file
 
