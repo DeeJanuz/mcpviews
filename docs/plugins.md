@@ -190,10 +190,12 @@ Choose the auth type that matches your server:
 - **API key header** -- for services that use a custom header name. Same storage and fallback behavior as bearer tokens.
 - **OAuth** -- for services requiring browser-based login. MCP Mux handles the redirect flow. Tokens are stored in `~/.mcp-mux/auth/` and checked for expiry on each use; expired tokens are rejected rather than silently sent.
 
-Auth resolution is centralized in the `PluginAuth::resolve_header()` method in the shared crate. For Bearer and API Key auth, the resolution order is:
+Auth resolution is centralized in the `PluginAuth::resolve_header()` method in the shared crate, which delegates all token file I/O to the `token_store` module (`shared/src/token_store.rs`). For Bearer and API Key auth, the resolution order is:
 
-1. **Stored token** -- check `~/.mcp-mux/auth/<plugin-name>.json` for a saved `access_token`
+1. **Stored token** -- `token_store::load_stored_token()` reads `~/.mcp-mux/auth/<plugin-name>.json`, deserializes it as a `StoredToken`, and checks expiry. Expired tokens return `None`.
 2. **Environment variable** -- fall back to the configured `token_env` / `key_env` variable
+
+For OAuth, `token_store::load_stored_token()` handles the full cycle: load, deserialize, expiry check. Token storage after OAuth flows uses `token_store::store_token()`.
 
 This means users no longer need to set environment variables manually. After installing a plugin that requires Bearer or API Key auth, MCP Mux immediately prompts for the token via a modal dialog. The token can also be configured later via the "Configure Auth" button in the Plugin Manager.
 

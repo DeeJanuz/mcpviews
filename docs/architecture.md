@@ -50,7 +50,7 @@ MCP Agent → POST localhost:4200/api/push
 | `state.rs` | `AppState` — shared state containing `Mutex<SessionStore>`, `Mutex<ReviewState>`, `Mutex<PluginRegistry>`, and `reqwest::Client` |
 | `registry.rs` | Re-exports `get_configured_registry_url` and `fetch_registry` from the shared crate |
 | `tool_cache.rs` | `ToolCache` — per-plugin tool caching with 5-minute TTL, prefixed tool name indexing, and stale-detection logic (extracted from PluginRegistry) |
-| `auth.rs` | Plugin authentication — OAuth browser-redirect flow with ephemeral localhost callback server, plus Bearer and API key resolution |
+| `auth.rs` | Plugin authentication — OAuth browser-redirect flow with ephemeral localhost callback server. Token storage and loading delegate to `shared::token_store` |
 
 ### Frontend (`src/` + `public/`)
 
@@ -69,11 +69,12 @@ The WebView loads `index.html` which includes:
 
 `mcp-mux-shared` crate consumed by both the Tauri backend and CLI. Contains:
 - `PluginManifest`, `PluginMcpConfig` — plugin definition and MCP connection config
-- `PluginAuth` — tagged enum: `Bearer { token_env }`, `ApiKey { header_name, key_env }`, `OAuth { client_id, auth_url, token_url, scopes }`. Implements `Display`, `display_name()`, `is_configured()`, and `resolve_header()` for centralized auth resolution. Bearer and ApiKey variants check stored tokens in `~/.mcp-mux/auth/` first, falling back to environment variables
+- `PluginAuth` — tagged enum: `Bearer { token_env }`, `ApiKey { header_name, key_env }`, `OAuth { client_id, auth_url, token_url, scopes }`. Implements `Display`, `display_name()`, `is_configured()`, and `resolve_header()` for centralized auth resolution. All variants delegate token I/O to the `token_store` module, falling back to environment variables for Bearer and ApiKey
 - `RegistryEntry`, `RemoteRegistry` — remote registry schema
 - `PluginInfo` — lightweight plugin summary for IPC
 - Path helpers: `plugins_dir()`, `config_path()`, `auth_dir()`, `cache_dir()` — all under `~/.mcp-mux/`
 - `plugin_store::PluginStore` — filesystem-based plugin CRUD (list, load, save, remove, exists). Used by both CLI and Tauri app, eliminating duplicated disk I/O logic
+- `token_store` module — `StoredToken` struct with `load_stored_token()`, `store_token()`, `has_stored_token()`, and expiry checking. Centralizes all token file I/O (read, write, existence check, expiry detection) previously duplicated across `PluginAuth` match arms and `auth.rs`
 - `registry` module — `get_configured_registry_url()` and `fetch_registry()` with 1-hour disk cache. Shared by both CLI and Tauri app
 
 ### CLI (`cli/`)
