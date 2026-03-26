@@ -284,7 +284,7 @@ To list your plugin in the official registry, submit a pull request adding a `Re
 
 ### Discovery
 
-When MCP Mux starts, the `PluginStore` (from the shared crate) scans `~/.mcp-mux/plugins/` for JSON manifest files. Each valid manifest is loaded and its MCP configuration is registered. The same `PluginStore` is used by both the Tauri app and the CLI for all plugin CRUD operations.
+When MCP Mux starts, a `PluginStore` instance (from the shared crate) is injected into `PluginRegistry` at construction time. The registry scans `~/.mcp-mux/plugins/` for JSON manifest files, loads each valid manifest, and registers its MCP configuration. The same `PluginStore` is used by both the CLI and Tauri app for all plugin CRUD operations. The `PluginRegistry::load_plugins_with_store()` constructor accepts a custom `PluginStore` for testing.
 
 ### Tool Caching
 
@@ -316,4 +316,4 @@ The `list_plugins` command now compares installed plugin versions against the ca
 
 ### Hot Reload
 
-`POST /api/reload-plugins` reloads all plugins from disk and broadcasts a `notifications/tools/list_changed` JSON-RPC notification to all active MCP SSE sessions. Connected MCP clients can listen for this notification to refresh their tool lists without reconnecting.
+`POST /api/reload-plugins` calls `AppState::reload_plugins()`, which reloads all plugins from disk and broadcasts a `notifications/tools/list_changed` JSON-RPC notification to all active MCP SSE sessions. This method is also used internally whenever plugin state needs refreshing. Connected MCP clients can listen for this notification to refresh their tool lists without reconnecting.

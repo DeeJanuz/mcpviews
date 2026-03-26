@@ -323,19 +323,26 @@ await invoke('toggle_registry_source', { url: 'https://example.com/registry.json
 
 ### `get_settings`
 
-Read the application settings from `~/.mcp-mux/config.json`. Returns an empty object if no config file exists.
+Read the application settings from `~/.mcp-mux/config.json`. Returns default (empty) settings if no config file exists or the file cannot be parsed.
 
 ```javascript
 const settings = await invoke('get_settings');
-// Returns: { registry_url?: string, ... }
+// Returns: Settings
+// Settings: { registry_url?: string, registry_sources?: RegistrySource[] }
 ```
 
 ### `save_settings`
 
-Write application settings to `~/.mcp-mux/config.json`. Creates the config directory and file if they do not exist.
+Write application settings to `~/.mcp-mux/config.json`. Accepts a typed `Settings` object. Creates the config directory and file if they do not exist. Empty/null fields are omitted from the saved JSON.
 
 ```javascript
-await invoke('save_settings', { settings: { registry_url: 'https://example.com/registry.json' } });
+await invoke('save_settings', {
+  settings: {
+    registry_sources: [
+      { name: 'Default', url: 'https://example.com/registry.json', enabled: true }
+    ]
+  }
+});
 ```
 
 ## Tauri Events
