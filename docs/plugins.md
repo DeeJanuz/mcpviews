@@ -4,7 +4,7 @@
 
 MCP Mux supports a plugin system that allows third-party MCP servers to register their tools, renderers, and authentication configuration with the desktop app. Plugins are JSON manifest files stored in `~/.mcp-mux/plugins/`. When loaded, MCP Mux discovers the plugin's tools via MCP, maps tool outputs to the appropriate frontend renderers, and handles authentication automatically.
 
-Plugins can be installed from the built-in registry (a remote JSON file listing available plugins) or added manually from a local manifest file.
+Plugins can be installed from the built-in registry (a remote JSON file listing available plugins) or added manually from a local manifest file. If all remote registry sources are unreachable, MCP Mux falls back to a bundled registry (`shared/src/bundled_registry.json`) so that core plugins remain discoverable offline.
 
 ## Manifest Schema
 
@@ -190,7 +190,7 @@ The plugin registry is a JSON file hosted at a remote URL. MCP Mux ships with a 
 By default, MCP Mux fetches the plugin registry from:
 
 ```
-https://raw.githubusercontent.com/anthropics/mcp-mux-registry/main/registry.json
+https://raw.githubusercontent.com/DeeJanuz/mcp-mux/master/registry/registry.json
 ```
 
 To use a different registry, create or edit `~/.mcp-mux/config.json`:
@@ -216,7 +216,7 @@ MCP Mux supports multiple registry sources. Sources are stored in `~/.mcp-mux/co
 }
 ```
 
-When multiple sources are configured, MCP Mux fetches from all enabled sources and merges the results. If two sources provide a plugin with the same name, the last source wins. Each source has its own disk cache with a 1-hour TTL.
+When multiple sources are configured, MCP Mux fetches from all enabled sources and merges the results. If two sources provide a plugin with the same name, the last source wins. Each source has its own disk cache with a 1-hour TTL. If all remote sources fail, the bundled registry is used as a final fallback.
 
 The legacy single `registry_url` key is automatically migrated: if `registry_sources` is absent but `registry_url` is present, it is treated as a single default source. When sources are saved via the API, the `registry_url` key is removed.
 

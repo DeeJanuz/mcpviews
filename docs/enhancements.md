@@ -1,7 +1,7 @@
 # Technical Debt & Enhancement Log
 
 **Last Updated:** 2026-03-26
-**Total Active Issues:** 3
+**Total Active Issues:** 5
 **Resolved This Month:** 20
 
 ---
@@ -26,6 +26,20 @@ _None_
 - **Detected:** 2026-03-26 (commit a0ed7b5)
 
 ### Low
+
+#### L-007: Duplicated inline HTML empty-state markup in plugin-manager.js
+- **File(s):** `public/plugin-manager.js`
+- **Principle:** DRY
+- **Description:** The empty-state HTML pattern (outer div with `flex-direction:column;gap:12px;text-align:center`, inner heading and description divs with hardcoded font sizes and colors) is copy-pasted across three locations: the registry fetch error handler (~line 55), the empty registry cards renderer (~line 62), and the empty installed list renderer (~line 136). Style or structural changes require updating all three.
+- **Suggested Fix:** Extract a `renderEmptyState(title, message)` helper that returns the HTML string, and call it from all three locations.
+- **Detected:** 2026-03-26 (commit aa69a19)
+
+#### L-006: Bundled registry fallback parse failure is silently ignored
+- **File(s):** `shared/src/registry.rs`
+- **Principle:** Fail-fast / Observability
+- **Description:** In `fetch_all_registries` (line 169), if `serde_json::from_str` fails on the bundled JSON, the error is silently discarded and the generic "Failed to fetch from any registry source" error is returned. Since the bundled JSON is compiled in via `include_str!`, a parse failure would indicate a build-time data corruption that should be loudly reported.
+- **Suggested Fix:** Add an `eprintln!` or `tracing::error!` in the `Err` branch of the bundled parse, or use `unwrap`/`expect` since the data is compile-time constant and should always parse.
+- **Detected:** 2026-03-26 (commit aa69a19)
 
 #### L-005: Hardcoded URL in mcp_mux_entry_for Claude Desktop case diverges from $MCP_MUX_URL variable
 - **File(s):** `src-tauri/scripts/setup-integrations.sh`
@@ -86,6 +100,7 @@ _None_
 
 | Commit | Date | Score | Rating |
 |--------|------|-------|--------|
+| aa69a19 | 2026-03-26 | 75/100 | Good |
 | b5f3eb7 | 2026-03-26 | 80/100 | Good |
 | 84e0e57 | 2026-03-26 | 78/100 | Good |
 | abd466b | 2026-03-26 | 90/100 | Excellent |
