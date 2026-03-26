@@ -46,6 +46,7 @@ fn main() {
             commands::install_plugin_from_file,
             commands::fetch_registry,
             commands::start_plugin_auth,
+            commands::store_plugin_token,
             commands::get_settings,
             commands::save_settings,
         ])

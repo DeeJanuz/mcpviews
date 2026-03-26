@@ -192,6 +192,11 @@ pub async fn start_plugin_auth(
 }
 
 #[tauri::command]
+pub fn store_plugin_token(plugin_name: String, token: String) -> Result<(), String> {
+    crate::auth::store_api_key(&plugin_name, &token)
+}
+
+#[tauri::command]
 pub fn get_settings() -> Result<serde_json::Value, String> {
     let path = mcp_mux_shared::config_path();
     if !path.exists() {

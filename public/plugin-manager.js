@@ -127,8 +127,8 @@
         var row = document.createElement('div');
         row.className = 'installed-row';
 
-        var hasAuth = plugin.manifest && plugin.manifest.mcp && plugin.manifest.mcp.auth;
-        var authConfigured = plugin.auth_configured || false;
+        var hasAuth = !!plugin.auth_type;
+        var authConfigured = plugin.auth_configured !== false;
 
         var authBadgeHtml = '';
         if (hasAuth) {
@@ -193,6 +193,12 @@
       });
       loadRegistry();
       loadInstalled();
+
+      // Auto-prompt auth if the plugin requires it
+      var auth = entry.manifest.mcp && entry.manifest.mcp.auth;
+      if (auth) {
+        promptAuth(entry.manifest.name, auth);
+      }
     } catch (e) {
       alert('Failed to install plugin: ' + e);
     }
@@ -225,12 +231,76 @@
 
   async function configureAuth(pluginName) {
     try {
-      await window.__TAURI__.core.invoke('start_plugin_auth', { pluginName: pluginName });
-      alert('Authentication configured successfully!');
-      loadInstalled();
+      var plugins = await window.__TAURI__.core.invoke('list_plugins');
+      var plugin = plugins.find(function (p) { return p.name === pluginName; });
+      if (!plugin || !plugin.auth_type) {
+        showNotification('No auth configuration found for ' + pluginName, true);
+        return;
+      }
+      promptAuth(pluginName, { type: plugin.auth_type });
     } catch (e) {
-      alert('Auth error: ' + e);
+      showNotification('Auth error: ' + e, true);
     }
+  }
+
+  async function promptAuth(pluginName, auth) {
+    if (auth.type === 'oauth') {
+      try {
+        await window.__TAURI__.core.invoke('start_plugin_auth', { pluginName: pluginName });
+        showNotification('Authentication configured for ' + pluginName);
+        loadInstalled();
+      } catch (e) {
+        showNotification('Auth error: ' + e, true);
+      }
+    } else {
+      showTokenModal(pluginName, auth);
+    }
+  }
+
+  function showNotification(msg, isError) {
+    var el = document.createElement('div');
+    el.className = 'notification' + (isError ? ' notification-error' : '');
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(function () {
+      el.style.opacity = '0';
+      setTimeout(function () { document.body.removeChild(el); }, 300);
+    }, 3000);
+  }
+
+  function showTokenModal(pluginName, auth) {
+    var label = auth.type === 'bearer' ? 'Bearer Token' : 'API Key';
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML =
+      '<div class="modal">' +
+        '<div class="modal-title">Configure ' + escapeHtml(label) + '</div>' +
+        '<div class="modal-body">' +
+          '<p>Enter your ' + escapeHtml(label.toLowerCase()) + ' for <strong>' + escapeHtml(pluginName) + '</strong>:</p>' +
+          '<input type="password" class="modal-input" id="token-input" placeholder="Paste ' + escapeHtml(label.toLowerCase()) + ' here..." />' +
+        '</div>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-secondary" id="modal-skip">Skip</button>' +
+          '<button class="btn btn-primary" id="modal-save">Save</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    document.getElementById('modal-skip').addEventListener('click', function () {
+      document.body.removeChild(overlay);
+    });
+    document.getElementById('modal-save').addEventListener('click', async function () {
+      var token = document.getElementById('token-input').value.trim();
+      if (!token) return;
+      try {
+        await window.__TAURI__.core.invoke('store_plugin_token', { pluginName: pluginName, token: token });
+        document.body.removeChild(overlay);
+        showNotification('Authentication configured for ' + pluginName);
+        loadInstalled();
+      } catch (e) {
+        alert('Failed to save token: ' + e);
+      }
+    });
   }
 
   // --- Settings Tab ---

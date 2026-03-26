@@ -61,23 +61,77 @@ impl PluginAuth {
         }
     }
 
+    /// Check if auth is configured for a plugin (uses default auth_dir).
+    pub fn is_configured(&self, plugin_name: &str) -> bool {
+        self.is_configured_with_auth_dir(plugin_name, &auth_dir())
+    }
+
+    /// Check if auth is configured, with a custom auth directory (for testing).
+    pub fn is_configured_with_auth_dir(&self, plugin_name: &str, dir: &std::path::Path) -> bool {
+        let path = dir.join(format!("{}.json", plugin_name));
+        if path.exists() {
+            return true;
+        }
+        // For Bearer/ApiKey: also check env var as fallback
+        match self {
+            PluginAuth::Bearer { token_env } => std::env::var(token_env).is_ok(),
+            PluginAuth::ApiKey { key_env, .. } => {
+                key_env
+                    .as_ref()
+                    .map(|e| std::env::var(e).is_ok())
+                    .unwrap_or(false)
+            }
+            PluginAuth::OAuth { .. } => false, // OAuth only uses stored tokens
+        }
+    }
+
     /// Resolve the auth header value for this auth config.
-    /// For Bearer: reads token from env var, returns "Bearer {token}"
-    /// For ApiKey: reads key from env var, returns "{header_name}:{key}"
+    /// For Bearer/ApiKey: checks stored token first, then falls back to env var.
     /// For OAuth: reads stored token from auth_dir(), returns "Bearer {token}"
     pub fn resolve_header(&self, plugin_name: &str) -> Option<String> {
+        self.resolve_header_with_auth_dir(plugin_name, &auth_dir())
+    }
+
+    /// Resolve the auth header with a custom auth directory (for testing).
+    pub fn resolve_header_with_auth_dir(
+        &self,
+        plugin_name: &str,
+        dir: &std::path::Path,
+    ) -> Option<String> {
         match self {
-            PluginAuth::Bearer { token_env } => match std::env::var(token_env) {
-                Ok(token) => Some(format!("Bearer {}", token)),
-                Err(_) => {
-                    eprintln!("[mcp-mux] Auth env var '{}' not set", token_env);
-                    None
+            PluginAuth::Bearer { token_env } => {
+                // Check stored token first
+                let path = dir.join(format!("{}.json", plugin_name));
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    if let Ok(stored) = serde_json::from_str::<serde_json::Value>(&content) {
+                        if let Some(token) = stored.get("access_token").and_then(|v| v.as_str()) {
+                            return Some(format!("Bearer {}", token));
+                        }
+                    }
                 }
-            },
+                // Fall back to env var
+                match std::env::var(token_env) {
+                    Ok(token) => Some(format!("Bearer {}", token)),
+                    Err(_) => {
+                        eprintln!("[mcp-mux] Auth env var '{}' not set", token_env);
+                        None
+                    }
+                }
+            }
             PluginAuth::ApiKey {
                 header_name,
                 key_env,
             } => {
+                // Check stored token first
+                let path = dir.join(format!("{}.json", plugin_name));
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    if let Ok(stored) = serde_json::from_str::<serde_json::Value>(&content) {
+                        if let Some(key) = stored.get("access_token").and_then(|v| v.as_str()) {
+                            return Some(format!("{}:{}", header_name, key));
+                        }
+                    }
+                }
+                // Fall back to env var
                 if let Some(env_var) = key_env {
                     match std::env::var(env_var) {
                         Ok(key) => Some(format!("{}:{}", header_name, key)),
@@ -91,7 +145,7 @@ impl PluginAuth {
                 }
             }
             PluginAuth::OAuth { .. } => {
-                let path = auth_dir().join(format!("{}.json", plugin_name));
+                let path = dir.join(format!("{}.json", plugin_name));
                 let content = std::fs::read_to_string(&path).ok()?;
                 let stored: serde_json::Value = serde_json::from_str(&content).ok()?;
 
@@ -141,6 +195,7 @@ pub struct PluginInfo {
     pub version: String,
     pub has_mcp: bool,
     pub auth_type: Option<String>,
+    pub auth_configured: bool,
     pub tool_count: usize,
 }
 
@@ -202,6 +257,154 @@ mod tests {
             scopes: vec![],
         };
         assert_eq!(auth.display_name(), "oauth");
+    }
+
+    #[test]
+    fn test_is_configured_with_stored_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let token_path = dir.path().join("test-plugin.json");
+        std::fs::write(
+            &token_path,
+            r#"{"access_token":"tok123","refresh_token":null,"expires_at":null}"#,
+        )
+        .unwrap();
+
+        let auth = PluginAuth::Bearer {
+            token_env: "NONEXISTENT_ENV_VAR_12345".to_string(),
+        };
+        // is_configured should return true when a stored token file exists
+        assert!(auth.is_configured_with_auth_dir("test-plugin", dir.path()));
+    }
+
+    #[test]
+    fn test_is_configured_bearer_env_fallback() {
+        let dir = tempfile::tempdir().unwrap();
+        // No stored token file, but env var is set
+        std::env::set_var("TEST_BEARER_TOKEN_XYZ", "some-token");
+        let auth = PluginAuth::Bearer {
+            token_env: "TEST_BEARER_TOKEN_XYZ".to_string(),
+        };
+        assert!(auth.is_configured_with_auth_dir("no-stored-token-plugin", dir.path()));
+        std::env::remove_var("TEST_BEARER_TOKEN_XYZ");
+    }
+
+    #[test]
+    fn test_is_configured_bearer_neither() {
+        let dir = tempfile::tempdir().unwrap();
+        let auth = PluginAuth::Bearer {
+            token_env: "NONEXISTENT_ENV_VAR_99999".to_string(),
+        };
+        assert!(!auth.is_configured_with_auth_dir("missing-plugin", dir.path()));
+    }
+
+    #[test]
+    fn test_is_configured_apikey_env_fallback() {
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("TEST_API_KEY_XYZ", "some-key");
+        let auth = PluginAuth::ApiKey {
+            header_name: "X-API-Key".to_string(),
+            key_env: Some("TEST_API_KEY_XYZ".to_string()),
+        };
+        assert!(auth.is_configured_with_auth_dir("no-stored-apikey-plugin", dir.path()));
+        std::env::remove_var("TEST_API_KEY_XYZ");
+    }
+
+    #[test]
+    fn test_is_configured_apikey_no_env() {
+        let dir = tempfile::tempdir().unwrap();
+        let auth = PluginAuth::ApiKey {
+            header_name: "X-API-Key".to_string(),
+            key_env: None,
+        };
+        assert!(!auth.is_configured_with_auth_dir("no-apikey-plugin", dir.path()));
+    }
+
+    #[test]
+    fn test_is_configured_oauth_no_stored_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let auth = PluginAuth::OAuth {
+            client_id: "id".to_string(),
+            auth_url: "https://example.com/auth".to_string(),
+            token_url: "https://example.com/token".to_string(),
+            scopes: vec![],
+        };
+        assert!(!auth.is_configured_with_auth_dir("no-oauth-plugin", dir.path()));
+    }
+
+    #[test]
+    fn test_resolve_header_bearer_stored_token_first() {
+        let dir = tempfile::tempdir().unwrap();
+        let token_path = dir.path().join("bearer-plugin.json");
+        std::fs::write(
+            &token_path,
+            r#"{"access_token":"stored-tok","refresh_token":null,"expires_at":null}"#,
+        )
+        .unwrap();
+
+        std::env::set_var("TEST_BEARER_RESOLVE_ENV", "env-tok");
+        let auth = PluginAuth::Bearer {
+            token_env: "TEST_BEARER_RESOLVE_ENV".to_string(),
+        };
+        // Should prefer stored token over env var
+        let header = auth.resolve_header_with_auth_dir("bearer-plugin", dir.path());
+        assert_eq!(header, Some("Bearer stored-tok".to_string()));
+        std::env::remove_var("TEST_BEARER_RESOLVE_ENV");
+    }
+
+    #[test]
+    fn test_resolve_header_bearer_env_fallback() {
+        let dir = tempfile::tempdir().unwrap();
+        // No stored token
+        std::env::set_var("TEST_BEARER_RESOLVE_FB", "env-tok-fb");
+        let auth = PluginAuth::Bearer {
+            token_env: "TEST_BEARER_RESOLVE_FB".to_string(),
+        };
+        let header = auth.resolve_header_with_auth_dir("no-stored-bearer", dir.path());
+        assert_eq!(header, Some("Bearer env-tok-fb".to_string()));
+        std::env::remove_var("TEST_BEARER_RESOLVE_FB");
+    }
+
+    #[test]
+    fn test_resolve_header_apikey_stored_token_first() {
+        let dir = tempfile::tempdir().unwrap();
+        let token_path = dir.path().join("apikey-plugin.json");
+        std::fs::write(
+            &token_path,
+            r#"{"access_token":"stored-key","refresh_token":null,"expires_at":null}"#,
+        )
+        .unwrap();
+
+        std::env::set_var("TEST_APIKEY_RESOLVE_ENV", "env-key");
+        let auth = PluginAuth::ApiKey {
+            header_name: "X-API-Key".to_string(),
+            key_env: Some("TEST_APIKEY_RESOLVE_ENV".to_string()),
+        };
+        let header = auth.resolve_header_with_auth_dir("apikey-plugin", dir.path());
+        assert_eq!(header, Some("X-API-Key:stored-key".to_string()));
+        std::env::remove_var("TEST_APIKEY_RESOLVE_ENV");
+    }
+
+    #[test]
+    fn test_plugin_info_has_auth_configured_field() {
+        let info = PluginInfo {
+            name: "test".to_string(),
+            version: "1.0".to_string(),
+            has_mcp: true,
+            auth_type: Some("bearer".to_string()),
+            auth_configured: true,
+            tool_count: 0,
+        };
+        assert!(info.auth_configured);
+
+        let info2 = PluginInfo {
+            name: "test2".to_string(),
+            version: "1.0".to_string(),
+            has_mcp: true,
+            auth_type: Some("oauth".to_string()),
+            auth_configured: false,
+            tool_count: 0,
+        };
+        assert!(!info2.auth_configured);
     }
 
     #[test]

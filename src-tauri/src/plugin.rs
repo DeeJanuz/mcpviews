@@ -168,11 +168,18 @@ impl PluginRegistry {
                 let auth_type = manifest.mcp.as_ref().and_then(|m| {
                     m.auth.as_ref().map(|a| a.display_name().to_string())
                 });
+                let auth_configured = manifest
+                    .mcp
+                    .as_ref()
+                    .and_then(|m| m.auth.as_ref())
+                    .map(|a| a.is_configured(&manifest.name))
+                    .unwrap_or(true); // no auth needed = considered "configured"
                 PluginInfo {
                     name: manifest.name.clone(),
                     version: manifest.version.clone(),
                     has_mcp: manifest.mcp.is_some(),
                     auth_type,
+                    auth_configured,
                     tool_count: self.tool_cache.tool_count(i),
                 }
             })
