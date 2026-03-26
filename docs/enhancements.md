@@ -1,8 +1,8 @@
 # Technical Debt & Enhancement Log
 
 **Last Updated:** 2026-03-26
-**Total Active Issues:** 1
-**Resolved This Month:** 19
+**Total Active Issues:** 2
+**Resolved This Month:** 20
 
 ---
 
@@ -14,24 +14,33 @@ _None_
 
 ### High
 
-#### H-006: No tests for new Tauri commands and HTTP handlers (partial)
-- **File(s):** `src-tauri/src/commands.rs`, `src-tauri/src/http_server.rs`
-- **Principle:** Quality / Reliability
-- **Description:** McpSessionManager now has 14 unit tests (added in 6c7538b), but the Tauri command wrappers (`install_plugin_from_registry`, `install_plugin_from_zip`, `update_plugin`, `get_registry_sources`, `add_registry_source`, `remove_registry_source`, `toggle_registry_source`, `get_plugin_renderers`) and HTTP handlers (`mcp_sse_handler`, `mcp_post_handler`, `mcp_delete_handler`) still lack test coverage.
-- **Suggested Fix:** Extract testable service layers from the Tauri command wrappers. The `install_or_update_from_entry` helper is a good candidate for unit testing once its AppState dependency is narrowed.
-- **Detected:** 2026-03-26 (commit 0fb86a3), partially addressed in 6c7538b
+_None_
 
 ### Medium
 
-_None_
+#### M-010: AppState carries test-only `plugins_dir_override` field in production struct
+- **File(s):** `src-tauri/src/state.rs`
+- **Principle:** SRP / Clean Architecture
+- **Description:** The `plugins_dir_override: Option<PathBuf>` field and the conditional branch in `reload_plugins()` exist solely to support test injection. This leaks test infrastructure into the production struct. A cleaner approach would store the `PluginStore` itself as a field on `AppState` and always use it for reloads, eliminating the conditional entirely.
+- **Suggested Fix:** Replace `plugins_dir_override: Option<PathBuf>` with `plugin_store: PluginStore` as a permanent field. `reload_plugins()` would always use `self.plugin_store` instead of branching. `new()` initializes with the default store; `new_with_store()` accepts a custom one.
+- **Detected:** 2026-03-26 (commit a0ed7b5)
 
 ### Low
 
-_None_
+#### L-004: Duplicated test helpers across commands.rs and state.rs
+- **File(s):** `src-tauri/src/commands.rs`, `src-tauri/src/state.rs`
+- **Principle:** DRY
+- **Description:** `test_manifest()` and `test_app_state()` are defined identically in both test modules. As more test modules are added, this duplication will grow.
+- **Suggested Fix:** Create a `#[cfg(test)] pub mod test_helpers` in a shared location (e.g., `state.rs` or a dedicated `test_utils.rs`) and import from both test modules.
+- **Detected:** 2026-03-26 (commit a0ed7b5)
 
 ---
 
 ## Resolved Issues
+
+### Resolved 2026-03-26 (commit a0ed7b5)
+
+- **H-006:** No tests for Tauri commands and AppState -- added `AppState::new_with_store()` constructor for testable construction with temp dirs and `PluginStore::dir()` accessor; 10 unit tests added in `commands.rs` and `state.rs` covering command business logic (`get_health`, `install_or_update_from_entry`, plugin install/uninstall logic, `list_plugins_with_updates`) and AppState operations (`new_with_store`, `notify_tools_changed`, `reload_plugins`)
 
 ### Resolved 2026-03-26 (commit 5a83547)
 
@@ -70,6 +79,7 @@ _None_
 
 | Commit | Date | Score | Rating |
 |--------|------|-------|--------|
+| a0ed7b5 | 2026-03-26 | 82/100 | Good |
 | 5a83547 | 2026-03-26 | 88/100 | Good |
 | ebb9643 | 2026-03-26 | 68/100 | Acceptable |
 | 6c7538b | 2026-03-26 | 85/100 | Good |
