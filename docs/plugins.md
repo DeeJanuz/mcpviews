@@ -36,13 +36,13 @@ A plugin manifest is a JSON file with the following structure:
 | `version` | string | Yes | Semantic version of the plugin. |
 | `renderers` | object | No | Map of MCP tool names to frontend renderer names. When a tool result arrives, MCPViews uses this mapping to select the correct renderer. If a tool is not listed, the default `rich_content` renderer is used. |
 | `renderer_definitions` | RendererDef[] | **Recommended** | Structured renderer definitions with payload schemas for agent discovery. Each entry defines a renderer's name, description, scope, associated tools, data schema hint, and optional behavioral rule. Without these, agents can discover renderer names (via auto-discovery from the `renderers` map) but won't know how to construct payloads. See [Agent Discovery](#agent-discovery) below. |
-| `tool_rules` | object | No | Map of tool names to behavioral rule strings. These rules are returned by the `setup_agent_rules` MCP tool so agents can persist them for guided tool usage. Tool names are automatically prefixed with the plugin's `tool_prefix`. |
+| `tool_rules` | object | No | Map of tool names to behavioral rule strings. These rules are returned by the `init_session` and `mcpviews_setup` MCP tools so agents can persist them for guided tool usage. Tool names are automatically prefixed with the plugin's `tool_prefix`. |
 | `no_auto_push` | string[] | No | Tool names that should NOT auto-push results to the companion window. Mutation tools (writes, deletes, manages) typically belong here to prevent their thin confirmation responses from overwriting deliberately pushed content. Defaults to empty. |
 | `mcp` | object | No | MCP server connection configuration. If omitted, the plugin provides renderers only (no remote tools). |
 
 ### RendererDef
 
-Structured renderer definition used for agent rule bootstrapping via the `setup_agent_rules` MCP tool.
+Structured renderer definition used for agent rule bootstrapping via the `init_session` and `mcpviews_setup` MCP tools.
 
 ```json
 {
@@ -62,7 +62,7 @@ Structured renderer definition used for agent rule bootstrapping via the `setup_
 | `scope` | string | No | `"universal"` (any agent can use it) or `"tool"` (tied to specific MCP tools). Defaults to `"tool"`. |
 | `tools` | string[] | No | For tool-scoped renderers: which tool names trigger this renderer. |
 | `data_hint` | string | No | Data schema hint for agents (e.g., `"{ title: string, body: markdown }"`). |
-| `rule` | string | No | Behavioral rule text returned by `setup_agent_rules` for agent persistence. |
+| `rule` | string | No | Behavioral rule text returned by `init_session`/`mcpviews_setup` for agent persistence. |
 
 ### Agent Discovery
 
@@ -260,7 +260,7 @@ Choose the auth type that matches your server:
 
 - **Bearer token** -- simplest option. After install, a modal prompts the user to enter their token. The token is stored in `~/.mcpviews/auth/<plugin-name>.json`. Falls back to reading from the environment variable if no stored token exists.
 - **API key header** -- for services that use a custom header name. Same storage and fallback behavior as bearer tokens.
-- **OAuth** -- for services requiring browser-based login. MCPViews handles the redirect flow. Tokens are stored in `~/.mcpviews/auth/` and checked for expiry on each use. **Automatic token refresh**: when an OAuth token expires and a `refresh_token` is available, MCPViews automatically attempts a `refresh_token` grant before making plugin API calls. If refresh succeeds, the new token is stored to disk and the call proceeds transparently. If refresh fails, auth status and re-authentication URLs are surfaced through both MCP `initialize` instructions and the `setup_agent_rules` tool response, so agents can direct users to re-authenticate.
+- **OAuth** -- for services requiring browser-based login. MCPViews handles the redirect flow. Tokens are stored in `~/.mcpviews/auth/` and checked for expiry on each use. **Automatic token refresh**: when an OAuth token expires and a `refresh_token` is available, MCPViews automatically attempts a `refresh_token` grant before making plugin API calls. If refresh succeeds, the new token is stored to disk and the call proceeds transparently. If refresh fails, auth status and re-authentication URLs are surfaced through both MCP `initialize` instructions and the `init_session` tool response, so agents can direct users to re-authenticate.
 
 Auth resolution is centralized in the `PluginAuth::resolve_header()` method in the shared crate, which delegates all token file I/O to the `token_store` module (`shared/src/token_store.rs`). For Bearer and API Key auth, the resolution order is:
 

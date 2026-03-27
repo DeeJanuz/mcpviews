@@ -356,7 +356,7 @@ Every renderer in your `renderers` map should have a corresponding entry in `ren
 | `scope` | No | `"universal"` = any agent can use it directly. `"tool"` = tied to specific MCP tools (default). |
 | `tools` | No | For tool-scoped renderers: which unprefixed tool names produce output for this renderer. |
 | `data_hint` | **Yes** | JSON schema hint showing the expected shape of the `data` payload. This is what agents use to construct correct `push_content` calls. Without it, agents cannot format payloads. |
-| `rule` | No | Behavioral rule text returned by `setup_agent_rules` for agent persistence. |
+| `rule` | No | Behavioral rule text returned by `init_session`/`mcpviews_setup` for agent persistence. |
 
 **How auto-discovery and `renderer_definitions` interact:**
 

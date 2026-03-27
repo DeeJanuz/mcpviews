@@ -380,9 +380,9 @@ Check the status or result of a previously pushed review session.
 |-------|------|----------|-------------|
 | `session_id` | string | Yes | The session ID to check. |
 
-### `setup_agent_rules`
+### `init_session`
 
-Bootstrap behavioral rules for all mcpviews renderers and plugin tools. Call once per project to receive rules that should be persisted in the agent's native memory/rule system. Returns renderer rules, plugin tool rules, plugin auth status, and agent-type-specific persistence instructions.
+Initialize MCPViews for the current session. Returns current renderer definitions, behavioral rules, plugin auth status, and persistence instructions. Should be called at the start of every new agent session.
 
 **Parameters:**
 | Field | Type | Required | Description |
@@ -411,6 +411,25 @@ Bootstrap behavioral rules for all mcpviews renderers and plugin tools. Call onc
     }
   ],
   "persistence_instructions": "Persist each rule as a memory file..."
+}
+```
+
+### `mcpviews_setup`
+
+One-time setup for MCPViews. Returns instructions for persisting a session-start rule that ensures `init_session` is called automatically in every new session. Also returns current rules and plugin status.
+
+**Parameters:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `agent_type` | string | No | The agent platform calling this tool. Supported: `claude_code`, `claude_desktop`, `codex`, `cursor`, `windsurf`, `opencode`, `antigravity`. Determines the platform-specific setup instructions. If omitted or unrecognized, returns generic instructions. |
+
+**Response:**
+```json
+{
+  "rules": [ ... ],
+  "plugin_status": [ ... ],
+  "persistence_instructions": "Persist each rule as a memory file...",
+  "setup_instructions": "Add a rule in `.claude/rules/mcpviews-init.md` containing: ..."
 }
 ```
 
