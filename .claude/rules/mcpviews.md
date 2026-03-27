@@ -1,4 +1,4 @@
-# MCP Mux Rules
+# MCPViews Rules
 
 ## rich_content_usage
 

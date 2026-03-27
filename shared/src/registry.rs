@@ -1,7 +1,7 @@
 use crate::{cache_dir, config_path, RegistrySource, RemoteRegistry, RegistryEntry};
 
 pub const DEFAULT_REGISTRY_URL: &str =
-    "https://raw.githubusercontent.com/DeeJanuz/mcp-mux/master/registry/registry.json";
+    "https://raw.githubusercontent.com/DeeJanuz/mcpviews/master/registry/registry.json";
 
 const CACHE_TTL_SECS: u64 = 3600; // 1 hour
 
@@ -155,7 +155,7 @@ pub async fn fetch_all_registries(
             }
             Err(e) => {
                 eprintln!(
-                    "[mcp-mux] Failed to fetch registry '{}': {}",
+                    "[mcpviews] Failed to fetch registry '{}': {}",
                     source.name, e
                 );
             }
@@ -164,7 +164,7 @@ pub async fn fetch_all_registries(
 
     if !any_success && !sources.is_empty() {
         // All remote sources failed — fall back to bundled registry
-        eprintln!("[mcp-mux] All remote registry sources failed, using bundled registry");
+        eprintln!("[mcpviews] All remote registry sources failed, using bundled registry");
         let bundled = include_str!("bundled_registry.json");
         let registry: RemoteRegistry = serde_json::from_str(bundled)
             .expect("bundled_registry.json is compiled-in and must always parse; this is a build-time bug");
@@ -242,7 +242,7 @@ mod tests {
 
     #[test]
     fn test_get_configured_registry_url_returns_default_when_no_config() {
-        // config_path() points to ~/.mcp-mux/config.json which likely doesn't exist in CI
+        // config_path() points to ~/.mcpviews/config.json which likely doesn't exist in CI
         // If it does exist and has a registry_url, this test just verifies we get a non-empty string
         let url = get_configured_registry_url();
         assert!(!url.is_empty());

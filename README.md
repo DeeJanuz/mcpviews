@@ -1,4 +1,4 @@
-# MCP Mux
+# MCPViews
 
 A standalone Tauri v2 desktop app that serves as a rich display for AI agents. Replaces the companion Node.js server with a native app featuring system tray, auto-start, and a built-in HTTP push API.
 
@@ -11,7 +11,7 @@ A standalone Tauri v2 desktop app that serves as a rich display for AI agents. R
 
 ## Installation
 
-**macOS / Windows**: Download the latest release from [Releases](https://github.com/DeeJanuz/mcp-mux/releases).
+**macOS / Windows**: Download the latest release from [Releases](https://github.com/DeeJanuz/mcpviews/releases).
 
 **Linux** (build from source):
 
@@ -27,12 +27,12 @@ sudo dnf install webkit2gtk4.1-devel libappindicator-gtk3-devel librsvg2-devel
 sudo pacman -S webkit2gtk-4.1 libappindicator-gtk3 librsvg
 
 # Build
-git clone https://github.com/DeeJanuz/mcp-mux.git
-cd mcp-mux
+git clone https://github.com/DeeJanuz/mcpviews.git
+cd mcpviews
 npm install
 npm run build
 
-# The binary is at src-tauri/target/release/mcp-mux
+# The binary is at src-tauri/target/release/mcpviews
 # Or install the Tauri CLI for a bundled .deb/.AppImage:
 cargo install tauri-cli
 cargo tauri build
@@ -89,7 +89,7 @@ node sidecar/dist/sse-bridge.mjs --app-host https://app.example.com --key lf_com
 ## Project Structure
 
 ```
-mcp-mux/
+mcpviews/
 ├── src-tauri/              # Rust backend
 │   ├── src/
 │   │   ├── main.rs         # Tauri entry, tray, plugin setup
@@ -121,7 +121,7 @@ mcp-mux/
 
 ## Plugin System
 
-MCP Mux supports plugins that extend the app with tools from third-party MCP servers. Each plugin is a JSON manifest that declares renderer mappings, MCP server configuration, and authentication. Plugins are stored as individual JSON files in `~/.mcp-mux/plugins/`.
+MCPViews supports plugins that extend the app with tools from third-party MCP servers. Each plugin is a JSON manifest that declares renderer mappings, MCP server configuration, and authentication. Plugins are stored as individual JSON files in `~/.mcpviews/plugins/`.
 
 For full documentation, see [docs/plugins.md](docs/plugins.md). For a step-by-step guide to creating your own plugin, see [docs/plugin-development.md](docs/plugin-development.md).
 
@@ -139,19 +139,19 @@ Open the system tray menu and select **Manage Plugins**. From there you can:
 
 ```bash
 # Search the registry
-mcp-mux-cli plugin search
+mcpviews-cli plugin search
 
 # Install a plugin from the registry
-mcp-mux-cli plugin add ludflow
+mcpviews-cli plugin add ludflow
 
 # List installed plugins
-mcp-mux-cli plugin list
+mcpviews-cli plugin list
 
 # Install from a local manifest file
-mcp-mux-cli plugin add-custom ./my-plugin.json
+mcpviews-cli plugin add-custom ./my-plugin.json
 
 # Remove a plugin
-mcp-mux-cli plugin remove ludflow
+mcpviews-cli plugin remove ludflow
 ```
 
 For full CLI documentation, see [docs/cli.md](docs/cli.md).
@@ -193,10 +193,10 @@ Three auth types are supported: **bearer token** (env var), **API key** (custom 
 
 | Command | Description |
 |---------|-------------|
-| `mcp-mux-cli plugin list` | List installed plugins |
-| `mcp-mux-cli plugin add <name>` | Install a plugin from the registry |
-| `mcp-mux-cli plugin remove <name>` | Remove an installed plugin |
-| `mcp-mux-cli plugin add-custom <path>` | Install from a local manifest file |
-| `mcp-mux-cli plugin search [query]` | Search the plugin registry |
+| `mcpviews-cli plugin list` | List installed plugins |
+| `mcpviews-cli plugin add <name>` | Install a plugin from the registry |
+| `mcpviews-cli plugin remove <name>` | Remove an installed plugin |
+| `mcpviews-cli plugin add-custom <path>` | Install from a local manifest file |
+| `mcpviews-cli plugin search [query]` | Search the plugin registry |
 
 See [docs/cli.md](docs/cli.md) for full usage examples and configuration.

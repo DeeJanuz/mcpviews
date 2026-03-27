@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::{Emitter, State};
 
-use mcp_mux_shared::{PluginAuth, PluginInfo, PluginManifest, RegistryEntry, RegistrySource};
+use mcpviews_shared::{PluginAuth, PluginInfo, PluginManifest, RegistryEntry, RegistrySource};
 
 use crate::renderer_scanner::RendererInfo;
 
@@ -145,8 +145,8 @@ pub async fn fetch_registry(
         crate::registry::fetch_registry(&client, &url).await?
     } else {
         // Use all configured sources
-        let sources = mcp_mux_shared::registry::get_registry_sources();
-        mcp_mux_shared::registry::fetch_all_registries(&client, &sources).await?
+        let sources = mcpviews_shared::registry::get_registry_sources();
+        mcpviews_shared::registry::fetch_all_registries(&client, &sources).await?
     };
 
     // Cache the latest registry entries
@@ -160,12 +160,12 @@ pub async fn fetch_registry(
 
 #[tauri::command]
 pub fn get_registry_sources() -> Vec<RegistrySource> {
-    mcp_mux_shared::registry::get_registry_sources()
+    mcpviews_shared::registry::get_registry_sources()
 }
 
 #[tauri::command]
 pub fn add_registry_source(name: String, url: String) -> Result<(), String> {
-    let mut sources = mcp_mux_shared::registry::get_registry_sources();
+    let mut sources = mcpviews_shared::registry::get_registry_sources();
     if sources.iter().any(|s| s.url == url) {
         return Err("A source with this URL already exists".to_string());
     }
@@ -174,23 +174,23 @@ pub fn add_registry_source(name: String, url: String) -> Result<(), String> {
         url,
         enabled: true,
     });
-    mcp_mux_shared::registry::save_registry_sources(&sources)
+    mcpviews_shared::registry::save_registry_sources(&sources)
 }
 
 #[tauri::command]
 pub fn remove_registry_source(url: String) -> Result<(), String> {
-    let mut sources = mcp_mux_shared::registry::get_registry_sources();
+    let mut sources = mcpviews_shared::registry::get_registry_sources();
     sources.retain(|s| s.url != url);
-    mcp_mux_shared::registry::save_registry_sources(&sources)
+    mcpviews_shared::registry::save_registry_sources(&sources)
 }
 
 #[tauri::command]
 pub fn toggle_registry_source(url: String) -> Result<(), String> {
-    let mut sources = mcp_mux_shared::registry::get_registry_sources();
+    let mut sources = mcpviews_shared::registry::get_registry_sources();
     if let Some(source) = sources.iter_mut().find(|s| s.url == url) {
         source.enabled = !source.enabled;
     }
-    mcp_mux_shared::registry::save_registry_sources(&sources)
+    mcpviews_shared::registry::save_registry_sources(&sources)
 }
 
 #[tauri::command]
@@ -266,8 +266,8 @@ async fn install_or_update_from_entry(
 ) -> Result<(), String> {
     if let Some(download_url) = &entry.download_url {
         let client = state.http_client.clone();
-        let plugins_dir = mcp_mux_shared::plugins_dir();
-        let manifest = mcp_mux_shared::package::download_and_install_plugin(
+        let plugins_dir = mcpviews_shared::plugins_dir();
+        let manifest = mcpviews_shared::package::download_and_install_plugin(
             &client,
             download_url,
             &plugins_dir,
@@ -314,8 +314,8 @@ pub fn install_plugin_from_zip(
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
     let zip_path = std::path::Path::new(&path);
-    let plugins_dir = mcp_mux_shared::plugins_dir();
-    let manifest = mcp_mux_shared::package::install_from_local_zip(zip_path, &plugins_dir)?;
+    let plugins_dir = mcpviews_shared::plugins_dir();
+    let manifest = mcpviews_shared::package::install_from_local_zip(zip_path, &plugins_dir)?;
 
     let mut registry = state.plugin_registry.lock().unwrap();
     // Remove if already exists (for reinstall/update)
@@ -332,12 +332,12 @@ pub fn install_plugin_from_zip(
 }
 
 #[tauri::command]
-pub fn get_settings() -> Result<mcp_mux_shared::settings::Settings, String> {
-    Ok(mcp_mux_shared::settings::Settings::load())
+pub fn get_settings() -> Result<mcpviews_shared::settings::Settings, String> {
+    Ok(mcpviews_shared::settings::Settings::load())
 }
 
 #[tauri::command]
-pub fn save_settings(settings: mcp_mux_shared::settings::Settings) -> Result<(), String> {
+pub fn save_settings(settings: mcpviews_shared::settings::Settings) -> Result<(), String> {
     settings.save()
 }
 

@@ -39,7 +39,7 @@ pub fn load_stored_token(dir: &Path, plugin_name: &str) -> Option<StoredToken> {
 
     if token.is_expired() {
         eprintln!(
-            "[mcp-mux] Stored token for plugin '{}' has expired",
+            "[mcpviews] Stored token for plugin '{}' has expired",
             plugin_name
         );
         return None;

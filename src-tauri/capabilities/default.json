@@ -1,6 +1,6 @@
 {
   "identifier": "default",
-  "description": "Default capabilities for MCP Mux",
+  "description": "Default capabilities for MCPViews",
   "windows": ["main"],
   "permissions": [
     "core:default",

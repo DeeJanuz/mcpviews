@@ -1,10 +1,10 @@
 use clap::{Parser, Subcommand};
-use mcp_mux_shared::*;
-use mcp_mux_shared::plugin_store::PluginStore;
-use mcp_mux_shared::registry;
+use mcpviews_shared::*;
+use mcpviews_shared::plugin_store::PluginStore;
+use mcpviews_shared::registry;
 
 #[derive(Parser)]
-#[command(name = "mcp-mux-cli", about = "MCP Mux plugin manager CLI")]
+#[command(name = "mcpviews-cli", about = "MCPViews plugin manager CLI")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,

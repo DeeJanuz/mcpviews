@@ -3,10 +3,10 @@ use std::process::Command;
 use tauri::Manager;
 
 /// Check if first-run setup has been completed.
-/// Returns true if ~/.mcp-mux/.setup-complete exists.
+/// Returns true if ~/.mcpviews/.setup-complete exists.
 pub fn check_first_run() -> bool {
     dirs::home_dir()
-        .map(|home| home.join(".mcp-mux").join(".setup-complete").exists())
+        .map(|home| home.join(".mcpviews").join(".setup-complete").exists())
         .unwrap_or(false)
 }
 

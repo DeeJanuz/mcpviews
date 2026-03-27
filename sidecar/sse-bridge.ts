@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * SSE Bridge Sidecar for MCP Mux
+ * SSE Bridge Sidecar for MCPViews
  *
  * Connects to a remote app's /api/companion/stream via SSE,
- * and forwards push events to the local MCP Mux HTTP server
+ * and forwards push events to the local MCPViews HTTP server
  * (POST localhost:4200/api/push).
  *
  * Usage: node sse-bridge.mjs --app-host https://app.example.com --key lf_companion_xxx

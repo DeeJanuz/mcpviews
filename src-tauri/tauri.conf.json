@@ -1,8 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicedoc/tauri/refs/heads/dev/crates/tauri-utils/schema.json",
-  "productName": "MCP Mux",
+  "productName": "MCPViews",
   "version": "0.1.0",
-  "identifier": "com.mcpmux.app",
+  "identifier": "com.mcpviews.app",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "MCP Mux",
+        "title": "MCPViews",
         "width": 1200,
         "height": 800,
         "resizable": true,

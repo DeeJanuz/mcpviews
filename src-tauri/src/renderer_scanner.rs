@@ -1,4 +1,4 @@
-use mcp_mux_shared::plugins_dir;
+use mcpviews_shared::plugins_dir;
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]

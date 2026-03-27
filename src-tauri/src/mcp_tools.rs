@@ -1,4 +1,4 @@
-use mcp_mux_shared::RendererDef;
+use mcpviews_shared::RendererDef;
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::Mutex as TokioMutex;
@@ -263,16 +263,17 @@ async fn call_push_check(
     }))
 }
 
-/// Collect renderer and tool rules from built-in renderers and plugin manifests.
+/// Collect renderer and tool rules from all renderers and plugin manifests.
 pub(crate) fn collect_rules(
-    builtin_renderers: &[RendererDef],
-    manifests: &[mcp_mux_shared::PluginManifest],
+    all_renderers: &[RendererDef],
+    manifests: &[mcpviews_shared::PluginManifest],
 ) -> Vec<Value> {
     let mut rules: Vec<Value> = Vec::new();
 
-    // Built-in renderer rules
-    for renderer in builtin_renderers {
+    // Renderer rules — covers built-in, explicit, AND synthesized renderers
+    for renderer in all_renderers {
         if let Some(rule) = &renderer.rule {
+            // Renderer has an explicit rule
             rules.push(serde_json::json!({
                 "name": format!("{}_usage", renderer.name),
                 "category": "renderer",
@@ -280,10 +281,21 @@ pub(crate) fn collect_rules(
                 "renderer": renderer.name,
                 "rule": rule,
             }));
+        } else if renderer.scope == "tool" && !renderer.tools.is_empty() {
+            // Synthesized tool-scoped renderer — generate a usage hint from description
+            rules.push(serde_json::json!({
+                "name": format!("{}_usage", renderer.name),
+                "category": "renderer",
+                "source": "plugin",
+                "renderer": renderer.name,
+                "description": renderer.description,
+                "data_hint": renderer.data_hint,
+                "tools": renderer.tools,
+            }));
         }
     }
 
-    // Plugin renderer rules and tool rules
+    // Plugin tool rules
     for manifest in manifests {
         let plugin_name = &manifest.name;
         let tool_prefix = manifest
@@ -291,18 +303,6 @@ pub(crate) fn collect_rules(
             .as_ref()
             .map(|m| m.tool_prefix.as_str())
             .unwrap_or("");
-
-        for renderer in &manifest.renderer_definitions {
-            if let Some(rule) = &renderer.rule {
-                rules.push(serde_json::json!({
-                    "name": format!("{}_usage", renderer.name),
-                    "category": "renderer",
-                    "source": plugin_name,
-                    "renderer": renderer.name,
-                    "rule": rule,
-                }));
-            }
-        }
 
         for (tool_name, rule) in &manifest.tool_rules {
             let prefixed_name = if tool_prefix.is_empty() {
@@ -325,7 +325,7 @@ pub(crate) fn collect_rules(
 
 /// Collect auth status for each plugin that has MCP + auth configured.
 pub(crate) fn collect_plugin_auth_status(
-    manifests: &[mcp_mux_shared::PluginManifest],
+    manifests: &[mcpviews_shared::PluginManifest],
 ) -> Vec<Value> {
     let mut plugin_status: Vec<Value> = Vec::new();
 
@@ -340,7 +340,7 @@ pub(crate) fn collect_plugin_auth_status(
                 });
 
                 if !is_configured {
-                    if let mcp_mux_shared::PluginAuth::OAuth {
+                    if let mcpviews_shared::PluginAuth::OAuth {
                         auth_url, ..
                     } = auth
                     {
@@ -369,18 +369,18 @@ pub(crate) fn collect_plugin_auth_status(
 /// Return agent-type-specific persistence instructions.
 pub(crate) fn persistence_instructions(agent_type: &str) -> String {
     match agent_type {
-        "claude_code" => "Create a file at `.claude/rules/mcp-mux.md` in the project root containing all the rules below. Each rule should be a separate section with its name as a heading and its rule text as the body. This file will be automatically loaded by Claude Code as project-level rules.".to_string(),
+        "claude_code" => "Create a file at `.claude/rules/mcpviews.md` in the project root containing all the rules below. Each rule should be a separate section with its name as a heading and its rule text as the body. This file will be automatically loaded by Claude Code as project-level rules.".to_string(),
 
-        "claude_desktop" => "For each rule below, create an individual memory using your memory creation capability. Use the title `mcp-mux: <rule name>` and the rule text as the content. Creating individual memories (rather than one combined memory) ensures each rule is retrievable independently and survives context window limits.".to_string(),
+        "claude_desktop" => "For each rule below, create an individual memory using your memory creation capability. Use the title `mcpviews: <rule name>` and the rule text as the content. Creating individual memories (rather than one combined memory) ensures each rule is retrievable independently and survives context window limits.".to_string(),
 
         "codex" | "opencode" | "antigravity" => "Append all rules below to `AGENTS.md` in the project root. Each rule should be a separate section with its name as a heading and its rule text as the body.".to_string(),
 
-        "cursor" => "Create a file at `.cursor/rules/mcp-mux.mdc` in the project root containing all the rules below. Each rule should be a separate section with its name as a heading and its rule text as the body. This file is read by Cursor as project-level rules.".to_string(),
+        "cursor" => "Create a file at `.cursor/rules/mcpviews.mdc` in the project root containing all the rules below. Each rule should be a separate section with its name as a heading and its rule text as the body. This file is read by Cursor as project-level rules.".to_string(),
 
         "windsurf" => "Append all rules below to `.windsurfrules` in the project root. Each rule should be a separate section with its name as a heading and its rule text as the body.".to_string(),
 
         _ => "These rules should be persisted so they guide your behavior in future conversations. \
-              Ask the user: \"I have received behavioral rules from MCP Mux for its renderers and tools. \
+              Ask the user: \"I have received behavioral rules from MCPViews for its renderers and tools. \
               How would you like me to persist them? I can write them to a rules file in this project, \
               create memories, or use another method your platform supports.\" \
               Then follow the user's direction to commit the rules.".to_string(),
@@ -398,9 +398,10 @@ async fn call_setup_agent_rules(
 
     let (rules, plugin_status) = {
         let state_guard = state.lock().await;
+        // Use full renderer list (built-in + explicit + synthesized)
+        let all_renderers = available_renderers(&state_guard.inner);
         let registry = state_guard.inner.plugin_registry.lock().unwrap();
-        let builtin = builtin_renderer_definitions();
-        let rules = collect_rules(&builtin, &registry.manifests);
+        let rules = collect_rules(&all_renderers, &registry.manifests);
         let plugin_status = collect_plugin_auth_status(&registry.manifests);
         (rules, plugin_status)
     };
@@ -543,9 +544,82 @@ fn builtin_renderer_definitions() -> Vec<RendererDef> {
 pub fn available_renderers(state: &std::sync::Arc<crate::state::AppState>) -> Vec<RendererDef> {
     let mut renderers = builtin_renderer_definitions();
     let registry = state.plugin_registry.lock().unwrap();
-    for manifest in &registry.manifests {
+
+    for (idx, manifest) in registry.manifests.iter().enumerate() {
+        // 1. Add explicit renderer definitions (plugin-provided, rich metadata)
         renderers.extend(manifest.renderer_definitions.clone());
+
+        // 2. Collect names already covered
+        let known: std::collections::HashSet<&str> =
+            renderers.iter().map(|r| r.name.as_str()).collect();
+
+        // 3. Synthesize from renderers map for any not already covered
+        //    Group tools by renderer name
+        let mut renderer_tools: std::collections::HashMap<&str, Vec<&str>> =
+            std::collections::HashMap::new();
+        for (tool_name, renderer_name) in &manifest.renderers {
+            if !known.contains(renderer_name.as_str()) {
+                renderer_tools
+                    .entry(renderer_name.as_str())
+                    .or_default()
+                    .push(tool_name.as_str());
+            }
+        }
+
+        // 4. For each discovered renderer, build RendererDef using tool cache info
+        let prefix = manifest
+            .mcp
+            .as_ref()
+            .map(|m| m.tool_prefix.as_str())
+            .unwrap_or("");
+        let cached_tools = registry.tool_cache.entries.get(idx).map(|e| &e.tools);
+
+        for (renderer_name, tool_names) in renderer_tools {
+            let mut tool_descriptions: Vec<String> = Vec::new();
+
+            for tool_name in &tool_names {
+                // Look up tool in cache by prefixed name
+                let prefixed = format!("{}{}", prefix, tool_name);
+                if let Some(tools) = cached_tools {
+                    if let Some(tool_def) = tools
+                        .iter()
+                        .find(|t| t.get("name").and_then(|n| n.as_str()) == Some(&prefixed))
+                    {
+                        if let Some(desc) =
+                            tool_def.get("description").and_then(|d| d.as_str())
+                        {
+                            tool_descriptions
+                                .push(format!("- {}: {}", tool_name, desc));
+                        }
+                    }
+                }
+            }
+
+            let description = if tool_descriptions.is_empty() {
+                format!("Renderer for {} plugin", manifest.name)
+            } else {
+                format!(
+                    "Renders output from these tools:\n{}",
+                    tool_descriptions.join("\n")
+                )
+            };
+
+            let data_hint = format!(
+                "Pass the result from any of these tools: {}. The data shape matches the tool's response.",
+                tool_names.join(", ")
+            );
+
+            renderers.push(RendererDef {
+                name: renderer_name.to_string(),
+                description,
+                scope: "tool".to_string(),
+                tools: tool_names.iter().map(|s| s.to_string()).collect(),
+                data_hint: Some(data_hint),
+                rule: None,
+            });
+        }
     }
+
     renderers
 }
 
@@ -562,7 +636,7 @@ fn builtin_tool_definitions(renderers: &[RendererDef]) -> Vec<Value> {
     vec![
         serde_json::json!({
             "name": "push_content",
-            "description": "Display content in the MCP Mux window. Supports multiple content types.",
+            "description": "Display content in the MCPViews window. Supports multiple content types.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -584,7 +658,7 @@ fn builtin_tool_definitions(renderers: &[RendererDef]) -> Vec<Value> {
         }),
         serde_json::json!({
             "name": "push_review",
-            "description": "Display content in the MCP Mux window and block until the user submits a review decision (accept/reject/partial). Use for mutation operations that need user approval before proceeding.",
+            "description": "Display content in the MCPViews window and block until the user submits a review decision (accept/reject/partial). Use for mutation operations that need user approval before proceeding.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -624,7 +698,7 @@ fn builtin_tool_definitions(renderers: &[RendererDef]) -> Vec<Value> {
         }),
         serde_json::json!({
             "name": "setup_agent_rules",
-            "description": "Bootstrap behavioral rules for all mcp-mux renderers and plugin tools. Call once to get rules to persist in your agent's native memory/rule system.",
+            "description": "Bootstrap behavioral rules for all mcpviews renderers and plugin tools. Call once to get rules to persist in your agent's native memory/rule system.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -641,7 +715,7 @@ fn builtin_tool_definitions(renderers: &[RendererDef]) -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mcp_mux_shared::{PluginManifest, PluginMcpConfig, PluginAuth};
+    use mcpviews_shared::{PluginManifest, PluginMcpConfig, PluginAuth};
 
     fn make_manifest(
         name: &str,
@@ -702,24 +776,37 @@ mod tests {
     }
 
     #[test]
-    fn test_collect_rules_plugin_renderer_rule_tagged_with_plugin_name() {
-        let manifest = make_manifest(
-            "my-plugin",
-            vec![RendererDef {
-                name: "custom_view".into(),
-                description: "Custom".into(),
-                scope: "tool".into(),
-                tools: vec![],
-                data_hint: None,
-                rule: Some("Use custom_view for X.".into()),
-            }],
-            std::collections::HashMap::new(),
-            None,
-        );
-        let rules = collect_rules(&[], &[manifest]);
+    fn test_collect_rules_renderer_with_rule() {
+        let renderers = vec![RendererDef {
+            name: "custom_view".into(),
+            description: "Custom".into(),
+            scope: "tool".into(),
+            tools: vec![],
+            data_hint: None,
+            rule: Some("Use custom_view for X.".into()),
+        }];
+        let rules = collect_rules(&renderers, &[]);
         assert_eq!(rules.len(), 1);
-        assert_eq!(rules[0]["source"], "my-plugin");
+        assert_eq!(rules[0]["source"], "built-in");
         assert_eq!(rules[0]["renderer"], "custom_view");
+    }
+
+    #[test]
+    fn test_collect_rules_synthesized_renderer_included() {
+        let renderers = vec![RendererDef {
+            name: "search_results".into(),
+            description: "Renders search output".into(),
+            scope: "tool".into(),
+            tools: vec!["search_codebase".into()],
+            data_hint: Some("Pass search results".into()),
+            rule: None,
+        }];
+        let rules = collect_rules(&renderers, &[]);
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0]["category"], "renderer");
+        assert_eq!(rules[0]["source"], "plugin");
+        assert_eq!(rules[0]["renderer"], "search_results");
+        assert_eq!(rules[0]["tools"][0], "search_codebase");
     }
 
     #[test]

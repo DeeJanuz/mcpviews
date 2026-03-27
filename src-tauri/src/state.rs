@@ -4,8 +4,8 @@ use std::sync::Mutex;
 use tokio::sync::Mutex as TokioMutex;
 use tokio::time::Instant;
 
-use mcp_mux_shared::plugin_store::PluginStore;
-use mcp_mux_shared::RegistryEntry;
+use mcpviews_shared::plugin_store::PluginStore;
+use mcpviews_shared::RegistryEntry;
 
 use crate::mcp_session::McpSessionManager;
 use crate::plugin::PluginRegistry;

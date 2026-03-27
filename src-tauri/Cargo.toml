@@ -1,5 +1,5 @@
 [package]
-name = "mcp-mux"
+name = "mcpviews"
 version = "0.1.0"
 edition = "2021"
 description = "Rich display for AI agents"
@@ -23,7 +23,7 @@ reqwest = { version = "0.12", features = ["json"] }
 sha2 = "0.10"
 base64 = "0.22"
 dirs = "5"
-mcp-mux-shared = { path = "../shared" }
+mcpviews-shared = { path = "../shared" }
 semver = "1"
 tokio-stream = { version = "0.1", features = ["sync"] }
 

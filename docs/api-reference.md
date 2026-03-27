@@ -1,4 +1,4 @@
-# MCP Mux — API Reference
+# MCPViews — API Reference
 
 ## HTTP Endpoints
 
@@ -247,7 +247,7 @@ const token = await invoke('start_plugin_auth', { pluginName: 'my-plugin' });
 
 ### `store_plugin_token`
 
-Store a Bearer token or API key for a plugin. Saves to `~/.mcp-mux/auth/<pluginName>.json`.
+Store a Bearer token or API key for a plugin. Saves to `~/.mcpviews/auth/<pluginName>.json`.
 
 ```javascript
 await invoke('store_plugin_token', { pluginName: 'my-plugin', token: 'sk-abc123' });
@@ -324,7 +324,7 @@ await invoke('toggle_registry_source', { url: 'https://example.com/registry.json
 
 ### `get_settings`
 
-Read the application settings from `~/.mcp-mux/config.json`. Returns default (empty) settings if no config file exists or the file cannot be parsed.
+Read the application settings from `~/.mcpviews/config.json`. Returns default (empty) settings if no config file exists or the file cannot be parsed.
 
 ```javascript
 const settings = await invoke('get_settings');
@@ -334,7 +334,7 @@ const settings = await invoke('get_settings');
 
 ### `save_settings`
 
-Write application settings to `~/.mcp-mux/config.json`. Accepts a typed `Settings` object. Creates the config directory and file if they do not exist. Empty/null fields are omitted from the saved JSON.
+Write application settings to `~/.mcpviews/config.json`. Accepts a typed `Settings` object. Creates the config directory and file if they do not exist. Empty/null fields are omitted from the saved JSON.
 
 ```javascript
 await invoke('save_settings', {
@@ -352,7 +352,7 @@ These tools are exposed via the MCP Streamable HTTP transport (`POST /mcp` with 
 
 ### `push_content`
 
-Display content in the MCP Mux window. Supports multiple content types.
+Display content in the MCPViews window. Supports multiple content types.
 
 **Parameters:**
 | Field | Type | Required | Description |
@@ -382,7 +382,7 @@ Check the status or result of a previously pushed review session.
 
 ### `setup_agent_rules`
 
-Bootstrap behavioral rules for all mcp-mux renderers and plugin tools. Call once per project to receive rules that should be persisted in the agent's native memory/rule system. Returns renderer rules, plugin tool rules, plugin auth status, and agent-type-specific persistence instructions.
+Bootstrap behavioral rules for all mcpviews renderers and plugin tools. Call once per project to receive rules that should be persisted in the agent's native memory/rule system. Returns renderer rules, plugin tool rules, plugin auth status, and agent-type-specific persistence instructions.
 
 **Parameters:**
 | Field | Type | Required | Description |

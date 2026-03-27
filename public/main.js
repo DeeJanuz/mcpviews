@@ -1,5 +1,5 @@
 // @ts-nocheck
-/* MCP Mux — Tauri WebView client
+/* MCPViews — Tauri WebView client
  * Replaces companion's WebSocket-based app.js with Tauri IPC events.
  */
 
@@ -123,12 +123,12 @@
         script.src = renderer.url;
         script.setAttribute('data-plugin-renderer', renderer.plugin_name + '/' + renderer.file_name);
         script.onerror = function () {
-          console.error('[mcp-mux] Failed to load plugin renderer:', renderer.url);
+          console.error('[mcpviews] Failed to load plugin renderer:', renderer.url);
         };
         document.head.appendChild(script);
       });
     } catch (e) {
-      console.error('[mcp-mux] Failed to load plugin renderers:', e);
+      console.error('[mcpviews] Failed to load plugin renderers:', e);
     }
   }
 
@@ -185,7 +185,7 @@
   }
 
   function renderEmpty() {
-    mainTitle.textContent = 'MCP Mux';
+    mainTitle.textContent = 'MCPViews';
     contentArea.innerHTML = '<div class="empty-state">Waiting for preview data...</div>';
   }
 

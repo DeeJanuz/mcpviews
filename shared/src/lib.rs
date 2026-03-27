@@ -143,7 +143,7 @@ impl PluginAuth {
                 match std::env::var(token_env) {
                     Ok(token) => Some(format!("Bearer {}", token)),
                     Err(_) => {
-                        eprintln!("[mcp-mux] Auth env var '{}' not set", token_env);
+                        eprintln!("[mcpviews] Auth env var '{}' not set", token_env);
                         None
                     }
                 }
@@ -161,7 +161,7 @@ impl PluginAuth {
                     match std::env::var(env_var) {
                         Ok(key) => Some(format!("{}:{}", header_name, key)),
                         Err(_) => {
-                            eprintln!("[mcp-mux] Auth env var '{}' not set", env_var);
+                            eprintln!("[mcpviews] Auth env var '{}' not set", env_var);
                             None
                         }
                     }
@@ -223,28 +223,28 @@ pub struct PluginInfo {
 pub fn plugins_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join(".mcp-mux")
+        .join(".mcpviews")
         .join("plugins")
 }
 
 pub fn config_path() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join(".mcp-mux")
+        .join(".mcpviews")
         .join("config.json")
 }
 
 pub fn auth_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join(".mcp-mux")
+        .join(".mcpviews")
         .join("auth")
 }
 
 pub fn cache_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join(".mcp-mux")
+        .join(".mcpviews")
         .join("cache")
 }
 

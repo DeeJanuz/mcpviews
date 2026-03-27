@@ -1,6 +1,6 @@
 use base64::Engine;
-use mcp_mux_shared::auth_dir;
-use mcp_mux_shared::token_store::StoredToken;
+use mcpviews_shared::auth_dir;
+use mcpviews_shared::token_store::StoredToken;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
@@ -173,7 +173,7 @@ pub async fn start_oauth_flow(
     };
     store_token(plugin_name, &stored)?;
 
-    eprintln!("[mcp-mux] OAuth flow completed for plugin '{}'", plugin_name);
+    eprintln!("[mcpviews] OAuth flow completed for plugin '{}'", plugin_name);
     Ok(access_token)
 }
 
@@ -198,9 +198,9 @@ fn open_browser(url: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Store an OAuth token to ~/.mcp-mux/auth/{plugin_name}.json
+/// Store an OAuth token to ~/.mcpviews/auth/{plugin_name}.json
 pub fn store_token(plugin_name: &str, token: &StoredToken) -> Result<(), String> {
-    mcp_mux_shared::token_store::store_token(&auth_dir(), plugin_name, token)
+    mcpviews_shared::token_store::store_token(&auth_dir(), plugin_name, token)
 }
 
 
@@ -212,8 +212,8 @@ pub async fn refresh_oauth_token(
     client_id: Option<&str>,
     http_client: &reqwest::Client,
 ) -> Result<String, String> {
-    let auth_dir = mcp_mux_shared::auth_dir();
-    let stored = mcp_mux_shared::token_store::load_stored_token_unvalidated(&auth_dir, plugin_name)
+    let auth_dir = mcpviews_shared::auth_dir();
+    let stored = mcpviews_shared::token_store::load_stored_token_unvalidated(&auth_dir, plugin_name)
         .ok_or_else(|| format!("No stored token for plugin '{}'", plugin_name))?;
 
     let refresh_token = stored
@@ -280,7 +280,7 @@ pub async fn refresh_oauth_token(
     store_token(plugin_name, &new_stored)?;
 
     eprintln!(
-        "[mcp-mux] Refreshed OAuth token for plugin '{}'",
+        "[mcpviews] Refreshed OAuth token for plugin '{}'",
         plugin_name
     );
     Ok(access_token)

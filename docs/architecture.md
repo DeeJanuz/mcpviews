@@ -1,8 +1,8 @@
-# MCP Mux — Architecture
+# MCPViews — Architecture
 
 ## Overview
 
-MCP Mux is a Tauri v2 desktop app that provides a rich display surface for AI agents. It replaces the companion Node.js server (`companion/`) with a native app featuring a Rust backend, system tray integration, and auto-start.
+MCPViews is a Tauri v2 desktop app that provides a rich display surface for AI agents. It replaces the companion Node.js server (`companion/`) with a native app featuring a Rust backend, system tray integration, and auto-start.
 
 ## Data Flow
 
@@ -56,7 +56,7 @@ MCP Agent → POST localhost:4200/api/push
 | `tool_cache.rs` | `ToolCache` — per-plugin tool caching with 5-minute TTL, prefixed tool name indexing, and stale-detection logic (extracted from PluginRegistry) |
 | `mcp_tools.rs` | MCP tool definitions and dispatch. Built-in tools: `push_content`, `push_review`, `push_check`, `setup_agent_rules`. Plugin tool proxy with automatic OAuth token refresh on expired tokens. Auto-push of plugin results to the companion window is gated by the manifest's `no_auto_push` denylist -- tools in the list skip the push to prevent mutation confirmations from overwriting displayed content. Renderer definitions (built-in + plugin) are collected and used to dynamically populate tool descriptions and MCP `initialize` instructions. `call_setup_agent_rules` delegates to extracted pure functions: `collect_rules(builtin_renderers, manifests)`, `collect_plugin_auth_status(manifests)`, and `persistence_instructions(agent_type)` (returns platform-specific persistence instructions for known agents, or a universal fallback that asks the user for unknown agents). Includes 18 unit tests for all extracted helpers |
 | `auth.rs` | Plugin authentication — OAuth browser-redirect flow with ephemeral localhost callback server. Token storage and loading delegate to `shared::token_store`. Includes `refresh_oauth_token()` for automatic refresh_token grant when access tokens expire |
-| `scripts/` | Bundled installer scripts for agent integration setup: `setup-integrations.sh` (Linux/macOS) and `setup-integrations.ps1` (Windows). Generates platform-specific MCP configs: Claude Desktop receives an `mcp-remote` bridge entry (`npx mcp-remote`) because it only supports stdio transport, while all other JSON-based platforms (Claude Code CLI, etc.) receive a direct HTTP URL entry. Both scripts include an `already_configured` guard that skips platforms whose config files already contain the MCP Mux entry, preventing accidental overwrites on re-runs |
+| `scripts/` | Bundled installer scripts for agent integration setup: `setup-integrations.sh` (Linux/macOS) and `setup-integrations.ps1` (Windows). Generates platform-specific MCP configs: Claude Desktop receives an `mcp-remote` bridge entry (`npx mcp-remote`) because it only supports stdio transport, while all other JSON-based platforms (Claude Code CLI, etc.) receive a direct HTTP URL entry. Both scripts include an `already_configured` guard that skips platforms whose config files already contain the MCPViews entry, preventing accidental overwrites on re-runs |
 
 ### Frontend (`src/` + `public/`)
 
@@ -73,23 +73,23 @@ The WebView loads `index.html` which includes:
 
 ### Shared Types (`shared/`)
 
-`mcp-mux-shared` crate consumed by both the Tauri backend and CLI. Contains:
+`mcpviews-shared` crate consumed by both the Tauri backend and CLI. Contains:
 - `RendererDef` — structured renderer definition with `name`, `description`, `scope` (universal/tool), `tools`, `data_hint`, and `rule` fields. Used by `setup_agent_rules` to bootstrap agent behavioral rules and by `initialize` to build dynamic MCP instructions
 - `PluginManifest`, `PluginMcpConfig` — plugin definition and MCP connection config. Manifests now support `renderer_definitions: Vec<RendererDef>` for structured renderer metadata, `tool_rules: HashMap<String, String>` for per-tool behavioral rules, and `no_auto_push: Vec<String>` to suppress auto-push for mutation tools whose thin confirmation responses would overwrite deliberately pushed companion content
 - `PluginAuth` — tagged enum: `Bearer { token_env }`, `ApiKey { header_name, key_env }`, `OAuth { client_id?, auth_url, token_url, scopes }`. Implements `Display`, `display_name()`, `is_configured()`, and `resolve_header()` for centralized auth resolution. All variants delegate token I/O to the `token_store` module, falling back to environment variables for Bearer and ApiKey. OAuth `client_id` is now optional
 - `RegistryEntry`, `RemoteRegistry` — remote registry schema. `RegistryEntry` now includes optional `download_url` for ZIP package distribution
 - `RegistrySource` — `{ name, url, enabled }` struct for multi-source registry configuration
 - `PluginInfo` — lightweight plugin summary for IPC, now includes `update_available: Option<String>` for version comparison
-- Path helpers: `plugins_dir()`, `config_path()`, `auth_dir()`, `cache_dir()` — all under `~/.mcp-mux/`
+- Path helpers: `plugins_dir()`, `config_path()`, `auth_dir()`, `cache_dir()` — all under `~/.mcpviews/`
 - `plugin_store::PluginStore` — filesystem-based plugin CRUD (list, load, save, remove, exists). Used by both CLI and Tauri app, eliminating duplicated disk I/O logic. Injected into `PluginRegistry` at construction time for testability. `dir()` accessor exposes the plugin directory path (used by `AppState::reload_plugins()` to reconstruct a fresh store)
-- `settings::Settings` — typed representation of `~/.mcp-mux/config.json` with `load()` and `save()` methods. Fields: optional legacy `registry_url`, and `registry_sources` vec. Replaces raw `serde_json::Value` handling in settings commands
+- `settings::Settings` — typed representation of `~/.mcpviews/config.json` with `load()` and `save()` methods. Fields: optional legacy `registry_url`, and `registry_sources` vec. Replaces raw `serde_json::Value` handling in settings commands
 - `token_store` module — `StoredToken` struct with `load_stored_token()`, `load_stored_token_unvalidated()`, `store_token()`, `has_stored_token()`, and expiry checking. `load_stored_token_unvalidated()` returns expired tokens without filtering (used by OAuth refresh to retrieve the refresh_token from an expired entry). Centralizes all token file I/O (read, write, existence check, expiry detection) previously duplicated across `PluginAuth` match arms and `auth.rs`
 - `registry` module — `get_configured_registry_url()`, `fetch_registry()`, `get_registry_sources()`, `save_registry_sources()`, and `fetch_all_registries()` with per-source 1-hour disk caching. Supports multi-source registry configuration with fallback to legacy single `registry_url`. When all remote sources fail, falls back to a bundled registry (`bundled_registry.json`) compiled into the binary via `include_str!`. Shared by both CLI and Tauri app
 - `package` module — ZIP plugin package handling: `extract_plugin_zip()` (with zip-slip protection, GitHub-style prefix stripping, manifest validation), `download_and_install_plugin()` (download + extract + install), and `install_from_local_zip()`. Max download size: 50MB
 
 ### CLI (`cli/`)
 
-Standalone binary (`mcp-mux-cli`) for headless plugin management. Commands: `list`, `add`, `remove`, `add-custom`, `search`. Shares `mcp-mux-shared` types with the Tauri app. See [docs/cli.md](cli.md).
+Standalone binary (`mcpviews-cli`) for headless plugin management. Commands: `list`, `add`, `remove`, `add-custom`, `search`. Shares `mcpviews-shared` types with the Tauri app. See [docs/cli.md](cli.md).
 
 ### Plugin Registry (`registry/`)
 
@@ -126,7 +126,7 @@ For `reviewRequired: true` pushes, the HTTP handler:
 - Push event → show + focus main window (automatic)
 - Tray menu → "Show Window" / "Manage Plugins" / "Setup Agent Integrations" / "Quit"
 - "Manage Plugins" opens a separate Plugin Manager window (`plugin-manager.html`, 800x600)
-- Custom `plugin://` URI scheme serves plugin renderer assets from `~/.mcp-mux/plugins/{name}/` with path traversal protection and MIME type detection
+- Custom `plugin://` URI scheme serves plugin renderer assets from `~/.mcpviews/plugins/{name}/` with path traversal protection and MIME type detection
 
 ## MCP Streamable HTTP Transport
 

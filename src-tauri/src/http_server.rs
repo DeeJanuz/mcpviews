@@ -399,7 +399,7 @@ async fn reload_plugins_handler(
 }
 
 pub async fn start_http_server(app_state: Arc<AppState>, app_handle: AppHandle) {
-    eprintln!("[mcp-mux] Starting HTTP server on :4200");
+    eprintln!("[mcpviews] Starting HTTP server on :4200");
     let _ = get_start_info(); // Initialize start time
 
     let async_state = Arc::new(TokioMutex::new(AsyncAppState {
@@ -450,13 +450,13 @@ pub async fn start_http_server(app_state: Arc<AppState>, app_handle: AppHandle) 
 
     match tokio::net::TcpListener::bind("0.0.0.0:4200").await {
         Ok(listener) => {
-            eprintln!("[mcp-mux] HTTP server listening on :4200");
+            eprintln!("[mcpviews] HTTP server listening on :4200");
             if let Err(e) = axum::serve(listener, app).await {
-                eprintln!("[mcp-mux] HTTP server error: {}", e);
+                eprintln!("[mcpviews] HTTP server error: {}", e);
             }
         }
         Err(e) => {
-            eprintln!("[mcp-mux] Failed to bind to port 4200: {}", e);
+            eprintln!("[mcpviews] Failed to bind to port 4200: {}", e);
         }
     }
 }
@@ -476,11 +476,11 @@ fn resolve_content_type(registry: &PluginRegistry, tool_name: &str) -> String {
 mod tests {
     use super::*;
     use crate::plugin::PluginRegistry;
-    use mcp_mux_shared::PluginManifest;
+    use mcpviews_shared::PluginManifest;
 
     fn empty_registry() -> (PluginRegistry, tempfile::TempDir) {
         let dir = tempfile::tempdir().unwrap();
-        let store = mcp_mux_shared::plugin_store::PluginStore::with_dir(dir.path().to_path_buf());
+        let store = mcpviews_shared::plugin_store::PluginStore::with_dir(dir.path().to_path_buf());
         let registry = PluginRegistry::load_plugins_with_store(store);
         (registry, dir)
     }

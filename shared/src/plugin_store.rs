@@ -6,7 +6,7 @@ pub struct PluginStore {
 }
 
 impl PluginStore {
-    /// Create a new PluginStore using the default plugins directory (~/.mcp-mux/plugins/)
+    /// Create a new PluginStore using the default plugins directory (~/.mcpviews/plugins/)
     pub fn new() -> Self {
         Self {
             dir: plugins_dir(),
@@ -49,11 +49,11 @@ impl PluginStore {
                         Ok(content) => match serde_json::from_str::<PluginManifest>(&content) {
                             Ok(manifest) => plugins.push(manifest),
                             Err(e) => {
-                                eprintln!("[mcp-mux] Failed to parse plugin {:?}: {}", manifest_path, e);
+                                eprintln!("[mcpviews] Failed to parse plugin {:?}: {}", manifest_path, e);
                             }
                         },
                         Err(e) => {
-                            eprintln!("[mcp-mux] Failed to read plugin {:?}: {}", manifest_path, e);
+                            eprintln!("[mcpviews] Failed to read plugin {:?}: {}", manifest_path, e);
                         }
                     }
                 }
@@ -64,11 +64,11 @@ impl PluginStore {
                     Ok(content) => match serde_json::from_str::<PluginManifest>(&content) {
                         Ok(manifest) => plugins.push(manifest),
                         Err(e) => {
-                            eprintln!("[mcp-mux] Failed to parse plugin {:?}: {}", path, e);
+                            eprintln!("[mcpviews] Failed to parse plugin {:?}: {}", path, e);
                         }
                     },
                     Err(e) => {
-                        eprintln!("[mcp-mux] Failed to read plugin {:?}: {}", path, e);
+                        eprintln!("[mcpviews] Failed to read plugin {:?}: {}", path, e);
                     }
                 }
             }
@@ -169,7 +169,7 @@ impl PluginStore {
                 std::fs::rename(&path, &new_path)
                     .map_err(|e| format!("Failed to migrate plugin '{}': {}", name, e))?;
 
-                eprintln!("[mcp-mux] Migrated plugin '{}' to directory format", name);
+                eprintln!("[mcpviews] Migrated plugin '{}' to directory format", name);
             }
         }
 

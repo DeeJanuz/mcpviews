@@ -71,7 +71,7 @@ async fn build_instructions(state: &Arc<TokioMutex<AsyncAppState>>) -> String {
         .collect();
 
     let mut instructions = String::from(
-        "MCP Mux provides a rich display window for presenting content to the user.\n\n"
+        "MCPViews provides a rich display window for presenting content to the user.\n\n"
     );
 
     if !universal.is_empty() {
@@ -178,7 +178,7 @@ async fn handle_single_request(
                         "tools": { "listChanged": true }
                     },
                     "serverInfo": {
-                        "name": "mcp-mux",
+                        "name": "mcpviews",
                         "version": env!("CARGO_PKG_VERSION")
                     },
                     "instructions": instructions

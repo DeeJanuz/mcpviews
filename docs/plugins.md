@@ -1,10 +1,10 @@
-# MCP Mux -- Plugin System
+# MCPViews -- Plugin System
 
 ## Overview
 
-MCP Mux supports a plugin system that allows third-party MCP servers to register their tools, renderers, and authentication configuration with the desktop app. Plugins are JSON manifest files stored in `~/.mcp-mux/plugins/`. When loaded, MCP Mux discovers the plugin's tools via MCP, maps tool outputs to the appropriate frontend renderers, and handles authentication automatically.
+MCPViews supports a plugin system that allows third-party MCP servers to register their tools, renderers, and authentication configuration with the desktop app. Plugins are JSON manifest files stored in `~/.mcpviews/plugins/`. When loaded, MCPViews discovers the plugin's tools via MCP, maps tool outputs to the appropriate frontend renderers, and handles authentication automatically.
 
-Plugins can be installed from the built-in registry (a remote JSON file listing available plugins) or added manually from a local manifest file. If all remote registry sources are unreachable, MCP Mux falls back to a bundled registry (`shared/src/bundled_registry.json`) so that core plugins remain discoverable offline.
+Plugins can be installed from the built-in registry (a remote JSON file listing available plugins) or added manually from a local manifest file. If all remote registry sources are unreachable, MCPViews falls back to a bundled registry (`shared/src/bundled_registry.json`) so that core plugins remain discoverable offline.
 
 ## Manifest Schema
 
@@ -32,10 +32,10 @@ A plugin manifest is a JSON file with the following structure:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `name` | string | Yes | Unique identifier for the plugin. Used as the filename in `~/.mcp-mux/plugins/<name>.json`. |
+| `name` | string | Yes | Unique identifier for the plugin. Used as the filename in `~/.mcpviews/plugins/<name>.json`. |
 | `version` | string | Yes | Semantic version of the plugin. |
-| `renderers` | object | No | Map of MCP tool names to frontend renderer names. When a tool result arrives, MCP Mux uses this mapping to select the correct renderer. If a tool is not listed, the default `rich_content` renderer is used. |
-| `renderer_definitions` | RendererDef[] | No | Structured renderer definitions with metadata for agent rule bootstrapping. Each entry defines a renderer's name, description, scope, associated tools, data schema hint, and behavioral rule. |
+| `renderers` | object | No | Map of MCP tool names to frontend renderer names. When a tool result arrives, MCPViews uses this mapping to select the correct renderer. If a tool is not listed, the default `rich_content` renderer is used. |
+| `renderer_definitions` | RendererDef[] | **Recommended** | Structured renderer definitions with payload schemas for agent discovery. Each entry defines a renderer's name, description, scope, associated tools, data schema hint, and optional behavioral rule. Without these, agents can discover renderer names (via auto-discovery from the `renderers` map) but won't know how to construct payloads. See [Agent Discovery](#agent-discovery) below. |
 | `tool_rules` | object | No | Map of tool names to behavioral rule strings. These rules are returned by the `setup_agent_rules` MCP tool so agents can persist them for guided tool usage. Tool names are automatically prefixed with the plugin's `tool_prefix`. |
 | `no_auto_push` | string[] | No | Tool names that should NOT auto-push results to the companion window. Mutation tools (writes, deletes, manages) typically belong here to prevent their thin confirmation responses from overwriting deliberately pushed content. Defaults to empty. |
 | `mcp` | object | No | MCP server connection configuration. If omitted, the plugin provides renderers only (no remote tools). |
@@ -63,6 +63,14 @@ Structured renderer definition used for agent rule bootstrapping via the `setup_
 | `tools` | string[] | No | For tool-scoped renderers: which tool names trigger this renderer. |
 | `data_hint` | string | No | Data schema hint for agents (e.g., `"{ title: string, body: markdown }"`). |
 | `rule` | string | No | Behavioral rule text returned by `setup_agent_rules` for agent persistence. |
+
+### Agent Discovery
+
+MCPViews automatically discovers plugin renderers by reading the `renderers` map and enriching entries with tool metadata from the MCP tool cache. This gives agents the renderer names and tool associations without any extra plugin configuration.
+
+However, **auto-discovery cannot infer payload shapes**. The tool cache contains tool *input* schemas (what you send to the tool), not renderer *data* schemas (what the renderer expects to display). Without `renderer_definitions` entries that include `data_hint`, agents will know a renderer exists but won't know how to format the `data` object when calling `push_content`.
+
+**Best practice:** Provide a `renderer_definitions` entry with a `data_hint` for every renderer in your `renderers` map.
 
 ### PluginMcpConfig
 
@@ -135,7 +143,7 @@ Plugins can be distributed as ZIP archives containing a `manifest.json` and opti
 - **Manifest validation**: The ZIP must contain a valid `manifest.json`
 - **Max download size**: 50MB for remote downloads
 
-Plugins are extracted to `~/.mcp-mux/plugins/{plugin-name}/` as a directory (rather than a single JSON file). The `manifest.json` inside the directory is used for plugin configuration.
+Plugins are extracted to `~/.mcpviews/plugins/{plugin-name}/` as a directory (rather than a single JSON file). The `manifest.json` inside the directory is used for plugin configuration.
 
 ### Custom Renderers
 
@@ -152,7 +160,7 @@ Renderer files are accessible at `plugin://localhost/{plugin-name}/renderers/{fi
 
 ## Registry Format
 
-The plugin registry is a JSON file hosted at a remote URL. MCP Mux ships with a default registry URL but this can be overridden (see Custom Registries and Multiple Registry Sources below).
+The plugin registry is a JSON file hosted at a remote URL. MCPViews ships with a default registry URL but this can be overridden (see Custom Registries and Multiple Registry Sources below).
 
 ### RemoteRegistry
 
@@ -183,18 +191,18 @@ The plugin registry is a JSON file hosted at a remote URL. MCP Mux ships with a 
 | `author` | string | No | Author or organization name. |
 | `homepage` | string | No | URL to the plugin's homepage or documentation. |
 | `tags` | string[] | No | Tags for search filtering (e.g., `["code-analysis", "documentation"]`). |
-| `manifest` | PluginManifest | Yes | The full plugin manifest that gets installed to `~/.mcp-mux/plugins/`. |
+| `manifest` | PluginManifest | Yes | The full plugin manifest that gets installed to `~/.mcpviews/plugins/`. |
 | `download_url` | string | No | URL to a ZIP package. If present, the plugin is downloaded and extracted instead of using the manifest alone. |
 
 ## Custom Registries
 
-By default, MCP Mux fetches the plugin registry from:
+By default, MCPViews fetches the plugin registry from:
 
 ```
-https://raw.githubusercontent.com/DeeJanuz/mcp-mux/master/registry/registry.json
+https://raw.githubusercontent.com/DeeJanuz/mcpviews/master/registry/registry.json
 ```
 
-To use a different registry, create or edit `~/.mcp-mux/config.json`:
+To use a different registry, create or edit `~/.mcpviews/config.json`:
 
 ```json
 {
@@ -206,7 +214,7 @@ Both the CLI and the desktop app read `registry_url` from this config file. If t
 
 ## Multiple Registry Sources
 
-MCP Mux supports multiple registry sources. Sources are stored in `~/.mcp-mux/config.json` under the `registry_sources` key:
+MCPViews supports multiple registry sources. Sources are stored in `~/.mcpviews/config.json` under the `registry_sources` key:
 
 ```json
 {
@@ -217,7 +225,7 @@ MCP Mux supports multiple registry sources. Sources are stored in `~/.mcp-mux/co
 }
 ```
 
-When multiple sources are configured, MCP Mux fetches from all enabled sources and merges the results. If two sources provide a plugin with the same name, the last source wins. Each source has its own disk cache with a 1-hour TTL. If all remote sources fail, the bundled registry is used as a final fallback.
+When multiple sources are configured, MCPViews fetches from all enabled sources and merges the results. If two sources provide a plugin with the same name, the last source wins. Each source has its own disk cache with a 1-hour TTL. If all remote sources fail, the bundled registry is used as a final fallback.
 
 The legacy single `registry_url` key is automatically migrated: if `registry_sources` is absent but `registry_url` is present, it is treated as a single default source. When sources are saved via the API, the `registry_url` key is removed.
 
@@ -225,15 +233,15 @@ Sources can be managed via the IPC commands: `get_registry_sources`, `add_regist
 
 ## Developing a Plugin
 
-To create an MCP server that works with MCP Mux:
+To create an MCP server that works with MCPViews:
 
 ### 1. Build an MCP-compatible server
 
-Your server must implement the [Model Context Protocol](https://spec.modelcontextprotocol.io/) and expose an HTTP endpoint. MCP Mux connects to the server's URL and discovers available tools via the MCP `tools/list` method.
+Your server must implement the [Model Context Protocol](https://spec.modelcontextprotocol.io/) and expose an HTTP endpoint. MCPViews connects to the server's URL and discovers available tools via the MCP `tools/list` method.
 
 ### 2. Choose renderers for your tools
 
-MCP Mux includes built-in renderers for general-purpose content:
+MCPViews includes built-in renderers for general-purpose content:
 
 | Renderer | Description |
 |----------|-------------|
@@ -250,18 +258,18 @@ Map each of your tools to the renderer that best fits its output in the `rendere
 
 Choose the auth type that matches your server:
 
-- **Bearer token** -- simplest option. After install, a modal prompts the user to enter their token. The token is stored in `~/.mcp-mux/auth/<plugin-name>.json`. Falls back to reading from the environment variable if no stored token exists.
+- **Bearer token** -- simplest option. After install, a modal prompts the user to enter their token. The token is stored in `~/.mcpviews/auth/<plugin-name>.json`. Falls back to reading from the environment variable if no stored token exists.
 - **API key header** -- for services that use a custom header name. Same storage and fallback behavior as bearer tokens.
-- **OAuth** -- for services requiring browser-based login. MCP Mux handles the redirect flow. Tokens are stored in `~/.mcp-mux/auth/` and checked for expiry on each use. **Automatic token refresh**: when an OAuth token expires and a `refresh_token` is available, MCP Mux automatically attempts a `refresh_token` grant before making plugin API calls. If refresh succeeds, the new token is stored to disk and the call proceeds transparently. If refresh fails, auth status and re-authentication URLs are surfaced through both MCP `initialize` instructions and the `setup_agent_rules` tool response, so agents can direct users to re-authenticate.
+- **OAuth** -- for services requiring browser-based login. MCPViews handles the redirect flow. Tokens are stored in `~/.mcpviews/auth/` and checked for expiry on each use. **Automatic token refresh**: when an OAuth token expires and a `refresh_token` is available, MCPViews automatically attempts a `refresh_token` grant before making plugin API calls. If refresh succeeds, the new token is stored to disk and the call proceeds transparently. If refresh fails, auth status and re-authentication URLs are surfaced through both MCP `initialize` instructions and the `setup_agent_rules` tool response, so agents can direct users to re-authenticate.
 
 Auth resolution is centralized in the `PluginAuth::resolve_header()` method in the shared crate, which delegates all token file I/O to the `token_store` module (`shared/src/token_store.rs`). For Bearer and API Key auth, the resolution order is:
 
-1. **Stored token** -- `token_store::load_stored_token()` reads `~/.mcp-mux/auth/<plugin-name>.json`, deserializes it as a `StoredToken`, and checks expiry. Expired tokens return `None`.
+1. **Stored token** -- `token_store::load_stored_token()` reads `~/.mcpviews/auth/<plugin-name>.json`, deserializes it as a `StoredToken`, and checks expiry. Expired tokens return `None`.
 2. **Environment variable** -- fall back to the configured `token_env` / `key_env` variable
 
 For OAuth, `token_store::load_stored_token()` handles the full cycle: load, deserialize, expiry check. Token storage after OAuth flows uses `token_store::store_token()`.
 
-This means users no longer need to set environment variables manually. After installing a plugin that requires Bearer or API Key auth, MCP Mux immediately prompts for the token via a modal dialog. The token can also be configured later via the "Configure Auth" button in the Plugin Manager.
+This means users no longer need to set environment variables manually. After installing a plugin that requires Bearer or API Key auth, MCPViews immediately prompts for the token via a modal dialog. The token can also be configured later via the "Configure Auth" button in the Plugin Manager.
 
 ### 4. Create the manifest file
 
@@ -291,7 +299,7 @@ Write a JSON file following the PluginManifest schema above. Example:
 Install your manifest with the CLI:
 
 ```bash
-mcp-mux-cli plugin add-custom ./my-analysis-tool.json
+mcpviews-cli plugin add-custom ./my-analysis-tool.json
 ```
 
 Then call one of your tools via the push API to verify the renderer displays correctly.
@@ -304,11 +312,11 @@ To list your plugin in the official registry, submit a pull request adding a `Re
 
 ### Discovery
 
-When MCP Mux starts, a `PluginStore` instance (from the shared crate) is injected into `PluginRegistry` at construction time. The registry scans `~/.mcp-mux/plugins/` for JSON manifest files, loads each valid manifest, and registers its MCP configuration. The same `PluginStore` is used by both the CLI and Tauri app for all plugin CRUD operations. The `PluginRegistry::load_plugins_with_store()` constructor accepts a custom `PluginStore` for testing.
+When MCPViews starts, a `PluginStore` instance (from the shared crate) is injected into `PluginRegistry` at construction time. The registry scans `~/.mcpviews/plugins/` for JSON manifest files, loads each valid manifest, and registers its MCP configuration. The same `PluginStore` is used by both the CLI and Tauri app for all plugin CRUD operations. The `PluginRegistry::load_plugins_with_store()` constructor accepts a custom `PluginStore` for testing.
 
 ### Tool Caching
 
-After connecting to a plugin's MCP server, MCP Mux calls `tools/list` to discover available tools. The tool list is cached locally in `~/.mcp-mux/cache/` to avoid repeated discovery calls on startup.
+After connecting to a plugin's MCP server, MCPViews calls `tools/list` to discover available tools. The tool list is cached locally in `~/.mcpviews/cache/` to avoid repeated discovery calls on startup.
 
 ### Cache TTL
 
@@ -320,13 +328,13 @@ Two caches operate with different TTLs:
 
 Plugins can be added or removed at runtime via the CLI or GUI. When a plugin is added:
 
-1. The manifest is written to `~/.mcp-mux/plugins/<name>.json` (or extracted to `~/.mcp-mux/plugins/<name>/` for ZIP packages)
+1. The manifest is written to `~/.mcpviews/plugins/<name>.json` (or extracted to `~/.mcpviews/plugins/<name>/` for ZIP packages)
 2. The desktop app detects the change and loads the new plugin
 3. Tools from the plugin become available immediately
 
 When a plugin is removed:
 
-1. The manifest file is deleted from `~/.mcp-mux/plugins/`
+1. The manifest file is deleted from `~/.mcpviews/plugins/`
 2. The desktop app unloads the plugin
 3. Cached tool data for the plugin is cleared
 

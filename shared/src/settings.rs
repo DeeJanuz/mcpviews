@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{config_path, RegistrySource};
 
-/// Typed representation of ~/.mcp-mux/config.json
+/// Typed representation of ~/.mcpviews/config.json
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Settings {
     /// Legacy single registry URL (read for migration, omitted on save)
@@ -15,7 +15,7 @@ pub struct Settings {
 }
 
 impl Settings {
-    /// Load settings from ~/.mcp-mux/config.json, returning defaults if the file
+    /// Load settings from ~/.mcpviews/config.json, returning defaults if the file
     /// does not exist or cannot be parsed.
     pub fn load() -> Self {
         let path = config_path();
@@ -28,7 +28,7 @@ impl Settings {
         }
     }
 
-    /// Persist settings to ~/.mcp-mux/config.json.
+    /// Persist settings to ~/.mcpviews/config.json.
     pub fn save(&self) -> Result<(), String> {
         let path = config_path();
         if let Some(parent) = path.parent() {

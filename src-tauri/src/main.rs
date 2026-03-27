@@ -83,7 +83,7 @@ fn main() {
                     .unwrap();
             }
 
-            let plugins_dir = mcp_mux_shared::plugins_dir();
+            let plugins_dir = mcpviews_shared::plugins_dir();
             let full_path = plugins_dir.join(plugin_name).join(file_path);
 
             match std::fs::read(&full_path) {
@@ -172,7 +172,7 @@ fn main() {
             let _tray = TrayIconBuilder::new()
                 .icon(icon)
                 .menu(&tray_menu)
-                .tooltip("MCP Mux")
+                .tooltip("MCPViews")
                 .on_menu_event(move |app, event| match event.id().as_ref() {
                     "show" => {
                         if let Some(window) = app.get_webview_window("main") {
@@ -190,7 +190,7 @@ fn main() {
                                 "plugin-manager",
                                 tauri::WebviewUrl::App("plugin-manager.html".into()),
                             )
-                            .title("MCP Mux - Plugin Manager")
+                            .title("MCPViews - Plugin Manager")
                             .inner_size(800.0, 600.0)
                             .build();
                         }
@@ -217,5 +217,5 @@ fn main() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running MCP Mux");
+        .expect("error while running MCPViews");
 }

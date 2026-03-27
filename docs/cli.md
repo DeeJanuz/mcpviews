@@ -1,20 +1,20 @@
-# MCP Mux CLI Reference
+# MCPViews CLI Reference
 
 ## Installation
 
 ### From crates.io
 
 ```bash
-cargo install mcp-mux-cli
+cargo install mcpviews-cli
 ```
 
 ### From source
 
 ```bash
-git clone https://github.com/anthropics/mcp-mux.git
-cd mcp-mux/cli
+git clone https://github.com/DeeJanuz/mcpviews.git
+cd mcpviews/cli
 cargo build --release
-# Binary is at target/release/mcp-mux-cli
+# Binary is at target/release/mcpviews-cli
 ```
 
 ## Commands
@@ -22,7 +22,7 @@ cargo build --release
 All commands are under the `plugin` subcommand:
 
 ```
-mcp-mux-cli plugin <action>
+mcpviews-cli plugin <action>
 ```
 
 ### `plugin list`
@@ -30,7 +30,7 @@ mcp-mux-cli plugin <action>
 List all installed plugins.
 
 ```bash
-mcp-mux-cli plugin list
+mcpviews-cli plugin list
 ```
 
 **Example output:**
@@ -47,7 +47,7 @@ Shows each plugin's name, version, authentication type, and MCP server URL. If n
 Install a plugin from the registry by name.
 
 ```bash
-mcp-mux-cli plugin add ludflow
+mcpviews-cli plugin add ludflow
 ```
 
 **Example output:**
@@ -56,14 +56,14 @@ mcp-mux-cli plugin add ludflow
 Installed plugin 'ludflow' v0.1.0
 ```
 
-This fetches the registry, finds the entry matching `<name>`, and writes its manifest to `~/.mcp-mux/plugins/<name>.json`. If the plugin is not found, the CLI prints available plugins and exits with an error.
+This fetches the registry, finds the entry matching `<name>`, and writes its manifest to `~/.mcpviews/plugins/<name>.json`. If the plugin is not found, the CLI prints available plugins and exits with an error.
 
 ### `plugin remove <name>`
 
 Remove an installed plugin.
 
 ```bash
-mcp-mux-cli plugin remove ludflow
+mcpviews-cli plugin remove ludflow
 ```
 
 **Example output:**
@@ -72,14 +72,14 @@ mcp-mux-cli plugin remove ludflow
 Removed plugin 'ludflow'.
 ```
 
-Deletes the manifest file from `~/.mcp-mux/plugins/`. If the plugin is not installed, the CLI exits with an error.
+Deletes the manifest file from `~/.mcpviews/plugins/`. If the plugin is not installed, the CLI exits with an error.
 
 ### `plugin add-custom <path>`
 
 Install a plugin from a local JSON manifest file.
 
 ```bash
-mcp-mux-cli plugin add-custom ./my-plugin-manifest.json
+mcpviews-cli plugin add-custom ./my-plugin-manifest.json
 ```
 
 **Example output:**
@@ -88,7 +88,7 @@ mcp-mux-cli plugin add-custom ./my-plugin-manifest.json
 Installed custom plugin 'my-plugin' v1.0.0
 ```
 
-Reads the manifest at `<path>`, validates it, and copies it to `~/.mcp-mux/plugins/<name>.json` (where `<name>` is the `name` field from the manifest). This is useful for testing plugins during development or for private plugins not published to the registry.
+Reads the manifest at `<path>`, validates it, and copies it to `~/.mcpviews/plugins/<name>.json` (where `<name>` is the `name` field from the manifest). This is useful for testing plugins during development or for private plugins not published to the registry.
 
 ### `plugin search [query]`
 
@@ -96,10 +96,10 @@ Search the plugin registry. If no query is given, lists all available plugins.
 
 ```bash
 # List all plugins
-mcp-mux-cli plugin search
+mcpviews-cli plugin search
 
 # Search by keyword
-mcp-mux-cli plugin search code-analysis
+mcpviews-cli plugin search code-analysis
 ```
 
 **Example output:**
@@ -115,7 +115,7 @@ Search matches against plugin name, description, and tags. The match is case-ins
 
 ### Registry URL
 
-The CLI fetches the plugin registry from a default URL. To use a custom registry, create `~/.mcp-mux/config.json`:
+The CLI fetches the plugin registry from a default URL. To use a custom registry, create `~/.mcpviews/config.json`:
 
 ```json
 {
@@ -129,13 +129,13 @@ The CLI reads this file on every registry operation. If the file does not exist 
 
 | Path | Purpose |
 |------|---------|
-| `~/.mcp-mux/plugins/` | Installed plugin manifests |
-| `~/.mcp-mux/config.json` | Configuration (registry URL) |
-| `~/.mcp-mux/cache/` | Cached registry data |
-| `~/.mcp-mux/auth/` | Stored authentication tokens |
+| `~/.mcpviews/plugins/` | Installed plugin manifests |
+| `~/.mcpviews/config.json` | Configuration (registry URL) |
+| `~/.mcpviews/cache/` | Cached registry data |
+| `~/.mcpviews/auth/` | Stored authentication tokens |
 
 ## Interaction with Desktop App
 
-The CLI and the desktop app share the same `~/.mcp-mux/plugins/` directory and use the same `PluginStore` and `registry` modules from the `mcp-mux-shared` crate. This means plugin CRUD operations and registry fetching (including the 1-hour disk cache) behave identically in both the CLI and desktop app.
+The CLI and the desktop app share the same `~/.mcpviews/plugins/` directory and use the same `PluginStore` and `registry` modules from the `mcpviews-shared` crate. This means plugin CRUD operations and registry fetching (including the 1-hour disk cache) behave identically in both the CLI and desktop app.
 
 Changes made by the CLI (adding or removing plugins) are picked up by the desktop app on the next plugin scan -- no restart is required. Both the CLI and desktop app now share the same registry cache on disk, so a fetch by either one benefits the other.

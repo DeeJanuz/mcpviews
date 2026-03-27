@@ -1,1 +1,1 @@
-pub use mcp_mux_shared::registry::fetch_registry;
+pub use mcpviews_shared::registry::fetch_registry;

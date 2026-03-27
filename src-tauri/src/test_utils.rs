@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use mcp_mux_shared::plugin_store::PluginStore;
+use mcpviews_shared::plugin_store::PluginStore;
 
 use crate::state::AppState;
 
-pub fn test_manifest(name: &str) -> mcp_mux_shared::PluginManifest {
-    mcp_mux_shared::PluginManifest {
+pub fn test_manifest(name: &str) -> mcpviews_shared::PluginManifest {
+    mcpviews_shared::PluginManifest {
         name: name.to_string(),
         version: "1.0.0".to_string(),
         renderers: std::collections::HashMap::new(),

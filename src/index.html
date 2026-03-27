@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MCP Mux</title>
+  <title>MCPViews</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -14,7 +14,7 @@
   <div id="app">
     <div id="main">
       <div id="main-header">
-        <span id="main-title" class="title">MCP Mux</span>
+        <span id="main-title" class="title">MCPViews</span>
         <div id="connection-status">
           <span id="connection-dot" class="dot connected"></span>
           <span id="connection-text">Ready</span>
@@ -37,7 +37,7 @@
   <script>
 (function() {
   var html = document.documentElement;
-  var saved = localStorage.getItem('mcp-mux-theme');
+  var saved = localStorage.getItem('mcpviews-theme');
   if (saved) {
     html.setAttribute('data-theme', saved);
   } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
@@ -51,7 +51,7 @@
         var current = html.getAttribute('data-theme');
         var next = current === 'dark' ? 'light' : 'dark';
         html.setAttribute('data-theme', next);
-        localStorage.setItem('mcp-mux-theme', next);
+        localStorage.setItem('mcpviews-theme', next);
         if (typeof mermaid !== 'undefined') {
           mermaid.initialize({ startOnLoad: false, theme: next === 'dark' ? 'dark' : 'default', securityLevel: 'loose', suppressErrorRendering: true });
         }
@@ -60,7 +60,7 @@
 
     if (window.matchMedia) {
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
-        if (!localStorage.getItem('mcp-mux-theme')) {
+        if (!localStorage.getItem('mcpviews-theme')) {
           var theme = e.matches ? 'dark' : 'light';
           html.setAttribute('data-theme', theme);
           if (typeof mermaid !== 'undefined') {

@@ -1,5 +1,5 @@
 // @ts-nocheck
-/* MCP Mux — Plugin Manager UI
+/* MCPViews — Plugin Manager UI
  * Standalone window for browsing, installing, and managing MCP plugins.
  */
 

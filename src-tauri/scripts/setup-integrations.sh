@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# MCP Mux — Agent Integration Setup
-# Sets up MCP Mux as an MCP server in supported AI agent platforms.
+# MCPViews — Agent Integration Setup
+# Sets up MCPViews as an MCP server in supported AI agent platforms.
 
-MCP_MUX_URL="http://localhost:4200/mcp"
-SENTINEL_DIR="$HOME/.mcp-mux"
+MCPVIEWS_URL="http://localhost:4200/mcp"
+SENTINEL_DIR="$HOME/.mcpviews"
 SENTINEL_FILE="$SENTINEL_DIR/.setup-complete"
 
 # ─── Platform definitions ────────────────────────────────────────────────────
@@ -103,7 +103,7 @@ mcp_key_for() {
   esac
 }
 
-# Returns 0 if mcp-mux is already configured for the given platform
+# Returns 0 if mcpviews is already configured for the given platform
 already_configured() {
   local idx="$1"
   local cfg
@@ -113,10 +113,10 @@ already_configured() {
 
   if [[ "$idx" -eq 4 ]]; then
     # Codex TOML
-    grep -q '\[mcp_servers\.mcp-mux\]' "$cfg" 2>/dev/null
+    grep -q '\[mcp_servers\.mcpviews\]' "$cfg" 2>/dev/null
   else
-    # JSON platforms — look for "mcp-mux" key
-    grep -q '"mcp-mux"' "$cfg" 2>/dev/null
+    # JSON platforms — look for "mcpviews" key
+    grep -q '"mcpviews"' "$cfg" 2>/dev/null
   fi
 }
 
@@ -128,21 +128,21 @@ if command -v python3 &>/dev/null; then
 fi
 
 # Claude Desktop requires stdio transport — use mcp-remote bridge for HTTP servers.
-# Returns the JSON snippet for the mcp-mux entry based on platform.
-mcp_mux_entry_for() {
+# Returns the JSON snippet for the mcpviews entry based on platform.
+mcpviews_entry_for() {
   local idx="$1"
   case "$idx" in
     0) # Claude Desktop — needs mcp-remote bridge (stdio transport only)
-      echo "{\"command\":\"npx\",\"args\":[\"-y\",\"mcp-remote\",\"$MCP_MUX_URL\"]}"
+      echo "{\"command\":\"npx\",\"args\":[\"-y\",\"mcp-remote\",\"$MCPVIEWS_URL\"]}"
       ;;
     *) # All other JSON platforms support url directly
-      echo "{\"url\":\"$MCP_MUX_URL\"}"
+      echo "{\"url\":\"$MCPVIEWS_URL\"}"
       ;;
   esac
 }
 
-# Merge mcp-mux entry into a JSON config file using python3.
-# $1 = file path, $2 = top-level key, $3 = JSON string for the mcp-mux value
+# Merge mcpviews entry into a JSON config file using python3.
+# $1 = file path, $2 = top-level key, $3 = JSON string for the mcpviews value
 merge_json_python() {
   local cfg="$1" key="$2" entry_json="$3"
   python3 -c "
@@ -166,7 +166,7 @@ if not isinstance(data, dict):
 if key not in data or not isinstance(data[key], dict):
     data[key] = {}
 
-data[key]['mcp-mux'] = entry
+data[key]['mcpviews'] = entry
 
 with open(cfg_path, 'w') as f:
     json.dump(data, f, indent=2)
@@ -174,14 +174,14 @@ with open(cfg_path, 'w') as f:
 " "$cfg" "$key" "$entry_json"
 }
 
-# Write a fresh JSON config with just the mcp-mux entry (bash fallback for new files).
+# Write a fresh JSON config with just the mcpviews entry (bash fallback for new files).
 # $1 = file path, $2 = top-level key, $3 = formatted entry lines (indented)
 write_fresh_json() {
   local cfg="$1" key="$2" entry_lines="$3"
   cat > "$cfg" <<ENDJSON
 {
   "$key": {
-    "mcp-mux": $entry_lines
+    "mcpviews": $entry_lines
   }
 }
 ENDJSON
@@ -213,14 +213,14 @@ merge_json_bash() {
       if [[ "$found_key" == false ]] && echo "$line" | grep -q "\"$key\""; then
         found_key=true
         if echo "$line" | grep -q '{'; then
-          echo "    \"mcp-mux\": $entry_lines," >> "$tmp"
+          echo "    \"mcpviews\": $entry_lines," >> "$tmp"
           inserted=true
         fi
         continue
       fi
       if [[ "$found_key" == true ]] && [[ "$inserted" == false ]]; then
         if echo "$line" | grep -q '{'; then
-          echo "    \"mcp-mux\": $entry_lines," >> "$tmp"
+          echo "    \"mcpviews\": $entry_lines," >> "$tmp"
           inserted=true
         fi
       fi
@@ -245,7 +245,7 @@ merge_json_bash() {
         if [[ "$line_num" -eq "$last_brace_line" ]]; then
           cat >> "$tmp" <<ENTRY
   ,"$key": {
-    "mcp-mux": $entry_lines
+    "mcpviews": $entry_lines
   }
 ENTRY
         fi
@@ -265,7 +265,7 @@ configure_json() {
   local cfg key entry_json
   cfg="$(config_path_for "$idx")"
   key="$(mcp_key_for "$idx")"
-  entry_json="$(mcp_mux_entry_for "$idx")"
+  entry_json="$(mcpviews_entry_for "$idx")"
 
   # Skip if already configured
   if already_configured "$idx"; then
@@ -299,7 +299,7 @@ configure_codex() {
   fi
 
   # Check if already present
-  if [[ -f "$cfg" ]] && grep -q '\[mcp_servers\.mcp-mux\]' "$cfg" 2>/dev/null; then
+  if [[ -f "$cfg" ]] && grep -q '\[mcp_servers\.mcpviews\]' "$cfg" 2>/dev/null; then
     return 0
   fi
 
@@ -310,9 +310,9 @@ configure_codex() {
       echo ""
     fi
     cat <<ENDTOML
-[mcp_servers.mcp-mux]
+[mcp_servers.mcpviews]
 type = "sse"
-url = "$MCP_MUX_URL"
+url = "$MCPVIEWS_URL"
 ENDTOML
   } >> "$cfg"
 }
@@ -332,7 +332,7 @@ configure_platform() {
 
 main() {
   echo ""
-  echo "MCP Mux — Agent Integration Setup"
+  echo "MCPViews — Agent Integration Setup"
   echo "==================================="
   echo ""
 
@@ -467,8 +467,8 @@ main() {
     done
   fi
   echo ""
-  echo "MCP Mux server runs on $MCP_MUX_URL"
-  echo "Make sure the MCP Mux app is running (check your system tray)."
+  echo "MCPViews server runs on $MCPVIEWS_URL"
+  echo "Make sure the MCPViews app is running (check your system tray)."
   echo ""
   read -rp "Press Enter to close..."
 }

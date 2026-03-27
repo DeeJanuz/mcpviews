@@ -1,5 +1,5 @@
-use mcp_mux_shared::{PluginAuth, PluginInfo, PluginManifest};
-use mcp_mux_shared::plugin_store::PluginStore;
+use mcpviews_shared::{PluginAuth, PluginInfo, PluginManifest};
+use mcpviews_shared::plugin_store::PluginStore;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -40,14 +40,14 @@ pub async fn try_refresh_oauth(
     {
         Ok(token) => {
             eprintln!(
-                "[mcp-mux] Auto-refreshed token for '{}'",
+                "[mcpviews] Auto-refreshed token for '{}'",
                 oauth_info.plugin_name
             );
             Some(format!("Bearer {}", token))
         }
         Err(e) => {
             eprintln!(
-                "[mcp-mux] Token refresh failed for '{}': {}",
+                "[mcpviews] Token refresh failed for '{}': {}",
                 oauth_info.plugin_name, e
             );
             None
@@ -66,12 +66,12 @@ impl PluginRegistry {
     pub fn load_plugins_with_store(store: PluginStore) -> Self {
         // Migrate legacy flat-file plugins to directory format
         if let Err(e) = store.migrate_legacy() {
-            eprintln!("[mcp-mux] Legacy plugin migration warning: {}", e);
+            eprintln!("[mcpviews] Legacy plugin migration warning: {}", e);
         }
         let manifests = match store.list() {
             Ok(m) => m,
             Err(e) => {
-                eprintln!("[mcp-mux] Failed to load plugins: {}", e);
+                eprintln!("[mcpviews] Failed to load plugins: {}", e);
                 return Self {
                     manifests: Vec::new(),
                     tool_cache: ToolCache::new(0),
@@ -82,7 +82,7 @@ impl PluginRegistry {
 
         for manifest in &manifests {
             eprintln!(
-                "[mcp-mux] Loaded plugin: {} v{}",
+                "[mcpviews] Loaded plugin: {} v{}",
                 manifest.name, manifest.version
             );
         }
@@ -197,7 +197,7 @@ impl PluginRegistry {
         self.store.save(&manifest)?;
 
         eprintln!(
-            "[mcp-mux] Installed plugin: {} v{}",
+            "[mcpviews] Installed plugin: {} v{}",
             manifest.name, manifest.version
         );
 
@@ -223,12 +223,12 @@ impl PluginRegistry {
 
         self.tool_cache.rebuild_index();
 
-        eprintln!("[mcp-mux] Uninstalled plugin: {}", name);
+        eprintln!("[mcpviews] Uninstalled plugin: {}", name);
         Ok(())
     }
 
     /// Return info about all loaded plugins, checking for updates against registry.
-    pub fn list_plugins_with_updates(&self, registry_entries: &[mcp_mux_shared::RegistryEntry]) -> Vec<PluginInfo> {
+    pub fn list_plugins_with_updates(&self, registry_entries: &[mcpviews_shared::RegistryEntry]) -> Vec<PluginInfo> {
         self.manifests
             .iter()
             .enumerate()
@@ -287,7 +287,7 @@ async fn fetch_plugin_tools(
             "protocolVersion": "2025-11-25",
             "capabilities": {},
             "clientInfo": {
-                "name": "mcp-mux",
+                "name": "mcpviews",
                 "version": env!("CARGO_PKG_VERSION")
             }
         }
@@ -304,10 +304,10 @@ async fn fetch_plugin_tools(
     let resp = req_builder
         .send()
         .await
-        .map_err(|e| format!("[mcp-mux] Plugin initialize failed ({}): {}", url, e))?;
+        .map_err(|e| format!("[mcpviews] Plugin initialize failed ({}): {}", url, e))?;
     if !resp.status().is_success() {
         return Err(format!(
-            "[mcp-mux] Plugin initialize returned HTTP {}",
+            "[mcpviews] Plugin initialize returned HTTP {}",
             resp.status()
         ));
     }
@@ -343,10 +343,10 @@ async fn fetch_plugin_tools(
     let list_resp = list_builder
         .send()
         .await
-        .map_err(|e| format!("[mcp-mux] Plugin tools/list failed: {}", e))?;
+        .map_err(|e| format!("[mcpviews] Plugin tools/list failed: {}", e))?;
     if !list_resp.status().is_success() {
         return Err(format!(
-            "[mcp-mux] Plugin tools/list returned HTTP {}",
+            "[mcpviews] Plugin tools/list returned HTTP {}",
             list_resp.status()
         ));
     }
@@ -354,7 +354,7 @@ async fn fetch_plugin_tools(
     let body: Value = list_resp
         .json()
         .await
-        .map_err(|e| format!("[mcp-mux] Failed to parse tools/list response: {}", e))?;
+        .map_err(|e| format!("[mcpviews] Failed to parse tools/list response: {}", e))?;
 
     Ok(body
         .get("result")
@@ -390,7 +390,7 @@ async fn apply_tool_cache(
         .unwrap_or_default();
 
     eprintln!(
-        "[mcp-mux] Refreshed {} tools from plugin '{}'",
+        "[mcpviews] Refreshed {} tools from plugin '{}'",
         tool_count, plugin_name
     );
 }

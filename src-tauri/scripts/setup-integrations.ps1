@@ -1,10 +1,10 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    MCP Mux - Agent Integration Setup (Windows)
+    MCPViews - Agent Integration Setup (Windows)
 .DESCRIPTION
     Detects installed MCP-compatible platforms and configures them to connect
-    to the local MCP Mux gateway at http://localhost:4200/mcp.
+    to the local MCPViews gateway at http://localhost:4200/mcp.
 #>
 
 Set-StrictMode -Version Latest
@@ -14,7 +14,7 @@ $ErrorActionPreference = 'Stop'
 # Platform definitions
 # ---------------------------------------------------------------------------
 
-$MCP_URL = "http://localhost:4200/mcp"
+$MCPVIEWS_URL = "http://localhost:4200/mcp"
 
 $Platforms = @(
     @{
@@ -93,7 +93,7 @@ function Test-AlreadyConfigured {
     try {
         if ($Platform.Format -eq "toml") {
             $content = Get-Content $Platform.ConfigPath -Raw -ErrorAction SilentlyContinue
-            if ($content -and $content -match '\[mcp_servers\.mcp-mux\]') { return $true }
+            if ($content -and $content -match '\[mcp_servers\.mcpviews\]') { return $true }
             return $false
         }
 
@@ -106,7 +106,7 @@ function Test-AlreadyConfigured {
 
         if ($json.PSObject.Properties.Name -contains $key) {
             $section = $json.$key
-            if ($section.PSObject.Properties.Name -contains "mcp-mux") {
+            if ($section.PSObject.Properties.Name -contains "mcpviews") {
                 return $true
             }
         }
@@ -172,20 +172,20 @@ function Install-JsonConfig {
         $json | Add-Member -NotePropertyName $jsonKey -NotePropertyValue ([PSCustomObject]@{})
     }
 
-    # Add mcp-mux entry
+    # Add mcpviews entry
     # Claude Desktop requires stdio transport via mcp-remote bridge
     if ($Platform.Name -eq "Claude Desktop") {
         $mcpMuxEntry = [PSCustomObject]@{
             command = "npx"
-            args    = @("-y", "mcp-remote", $MCP_URL)
+            args    = @("-y", "mcp-remote", $MCPVIEWS_URL)
         }
     }
     else {
         $mcpMuxEntry = [PSCustomObject]@{
-            url = $MCP_URL
+            url = $MCPVIEWS_URL
         }
     }
-    $json.$jsonKey | Add-Member -NotePropertyName "mcp-mux" -NotePropertyValue $mcpMuxEntry -Force
+    $json.$jsonKey | Add-Member -NotePropertyName "mcpviews" -NotePropertyValue $mcpMuxEntry -Force
 
     # Write back
     $json | ConvertTo-Json -Depth 10 | Set-Content -Path $configPath -Encoding UTF8
@@ -209,14 +209,14 @@ function Install-TomlConfig {
 
     $tomlBlock = @"
 
-[mcp_servers.mcp-mux]
+[mcp_servers.mcpviews]
 type = "sse"
-url = "$MCP_URL"
+url = "$MCPVIEWS_URL"
 "@
 
     if (Test-Path $configPath) {
         $content = Get-Content $configPath -Raw
-        if ($content -match '\[mcp_servers\.mcp-mux\]') {
+        if ($content -match '\[mcp_servers\.mcpviews\]') {
             Write-Host "  Already configured (skipped)" -ForegroundColor Yellow
             return $false
         }
@@ -234,7 +234,7 @@ url = "$MCP_URL"
 # ---------------------------------------------------------------------------
 
 Write-Host ""
-Write-Host "MCP Mux - Agent Integration Setup" -ForegroundColor Cyan
+Write-Host "MCPViews - Agent Integration Setup" -ForegroundColor Cyan
 Write-Host "===================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -359,7 +359,7 @@ foreach ($idx in $toInstall) {
 }
 
 # Create sentinel file
-$sentinelDir = Join-Path $env:USERPROFILE ".mcp-mux"
+$sentinelDir = Join-Path $env:USERPROFILE ".mcpviews"
 if (-not (Test-Path $sentinelDir)) {
     New-Item -ItemType Directory -Path $sentinelDir -Force | Out-Null
 }
@@ -384,7 +384,7 @@ else {
 }
 
 Write-Host ""
-Write-Host "MCP Mux server runs on $MCP_URL" -ForegroundColor Cyan
-Write-Host "Make sure the MCP Mux app is running (check your system tray)." -ForegroundColor Cyan
+Write-Host "MCPViews server runs on $MCPVIEWS_URL" -ForegroundColor Cyan
+Write-Host "Make sure the MCPViews app is running (check your system tray)." -ForegroundColor Cyan
 Write-Host ""
 Read-Host "Press Enter to close..."

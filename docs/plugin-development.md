@@ -1,6 +1,6 @@
 # Plugin Development Guide
 
-This guide walks you through creating a plugin for MCP Mux, from a minimal manifest to a full plugin with custom renderers, authentication, and registry publishing.
+This guide walks you through creating a plugin for MCPViews, from a minimal manifest to a full plugin with custom renderers, authentication, and registry publishing.
 
 ## Architecture Overview
 
@@ -10,7 +10,7 @@ graph TD
         A[Claude / MCP Client]
     end
 
-    subgraph "MCP Mux Desktop App"
+    subgraph "MCPViews Desktop App"
         B["/mcp endpoint<br/>(Streamable HTTP)"]
         C["Tool Dispatch<br/>(mcp_tools.rs)"]
         D["Plugin Registry<br/>(plugin.rs)"]
@@ -25,9 +25,9 @@ graph TD
     end
 
     subgraph "Filesystem"
-        J["~/.mcp-mux/plugins/<br/>manifest.json + renderers/"]
-        K["~/.mcp-mux/auth/<br/>tokens"]
-        L["~/.mcp-mux/cache/<br/>tool lists"]
+        J["~/.mcpviews/plugins/<br/>manifest.json + renderers/"]
+        K["~/.mcpviews/auth/<br/>tokens"]
+        L["~/.mcpviews/cache/<br/>tool lists"]
     end
 
     A -->|"POST /mcp<br/>(JSON-RPC)"| B
@@ -51,8 +51,8 @@ graph TD
 ```mermaid
 sequenceDiagram
     participant User
-    participant MuxApp as MCP Mux
-    participant Disk as ~/.mcp-mux/plugins/
+    participant MuxApp as MCPViews
+    participant Disk as ~/.mcpviews/plugins/
     participant PluginMCP as Plugin MCP Server
     participant Agent as AI Agent
 
@@ -98,24 +98,24 @@ Create `my-plugin/manifest.json`:
 
 ```bash
 # Copy to the plugins directory
-mkdir -p ~/.mcp-mux/plugins/my-plugin
-cp manifest.json ~/.mcp-mux/plugins/my-plugin/
+mkdir -p ~/.mcpviews/plugins/my-plugin
+cp manifest.json ~/.mcpviews/plugins/my-plugin/
 
 # Or use the CLI
-mcp-mux-cli plugin add-custom ./manifest.json
+mcpviews-cli plugin add-custom ./manifest.json
 ```
 
 ### 3. Verify
 
 ```bash
-mcp-mux-cli plugin list
+mcpviews-cli plugin list
 ```
 
 ## Full Plugin: MCP Server + Renderers + Auth
 
 ### Step 1: Build an MCP Server
 
-Your server must implement the [Model Context Protocol](https://spec.modelcontextprotocol.io/) over HTTP. MCP Mux connects via Streamable HTTP and performs this handshake:
+Your server must implement the [Model Context Protocol](https://spec.modelcontextprotocol.io/) over HTTP. MCPViews connects via Streamable HTTP and performs this handshake:
 
 1. `POST /mcp` with `initialize` request
 2. `POST /mcp` with `notifications/initialized`
@@ -141,11 +141,11 @@ server.tool("analyze_code", { path: z.string() }, async ({ path }) => {
 
 ### Step 2: Choose Renderers
 
-MCP Mux ships with built-in renderers for general-purpose content. Domain-specific renderers are delivered via plugins (e.g., the [Ludflow plugin](https://github.com/DeeJanuz/ludflow-mcp-mux) provides renderers for code analysis, data governance, and knowledge management).
+MCPViews ships with built-in renderers for general-purpose content. Domain-specific renderers are delivered via plugins (e.g., the [Ludflow plugin](https://github.com/DeeJanuz/ludflow-mcp-mux) provides renderers for code analysis, data governance, and knowledge management).
 
 #### Built-in Renderers
 
-These are general-purpose renderers bundled with MCP Mux. If no renderer is specified for a tool, `rich_content` is used as the default fallback.
+These are general-purpose renderers bundled with MCPViews. If no renderer is specified for a tool, `rich_content` is used as the default fallback.
 
 | Renderer | Best For | Data Shape |
 |----------|----------|------------|
@@ -204,10 +204,10 @@ Choose one of three auth types:
 ```
 
 Token resolution order:
-1. Stored token from `~/.mcp-mux/auth/<plugin-name>.json` (set via GUI prompt on install)
+1. Stored token from `~/.mcpviews/auth/<plugin-name>.json` (set via GUI prompt on install)
 2. Environment variable fallback (`token_env` / `key_env`)
 
-For OAuth, MCP Mux handles the full redirect flow, token storage, and automatic refresh.
+For OAuth, MCPViews handles the full redirect flow, token storage, and automatic refresh.
 
 ### Step 4: Write the Manifest
 
@@ -231,16 +231,16 @@ For OAuth, MCP Mux handles the full redirect flow, token storage, and automatic 
 }
 ```
 
-The `tool_prefix` is prepended to all your tool names to avoid collisions. An agent sees `mytool_analyze_code`; MCP Mux strips the prefix before forwarding to your server as `analyze_code`.
+The `tool_prefix` is prepended to all your tool names to avoid collisions. An agent sees `mytool_analyze_code`; MCPViews strips the prefix before forwarding to your server as `analyze_code`.
 
 ### Step 5: Test Locally
 
 ```bash
 # Install the plugin
-mcp-mux-cli plugin add-custom ./my-analysis-tool.json
+mcpviews-cli plugin add-custom ./my-analysis-tool.json
 
 # Verify it loaded
-mcp-mux-cli plugin list
+mcpviews-cli plugin list
 
 # Test a tool directly via the push API
 curl -X POST http://localhost:4200/api/push \
@@ -313,17 +313,30 @@ The renderer scanner (`renderer_scanner.rs`) automatically discovers JS files in
 }
 ```
 
-## Advanced: Agent Rule Bootstrapping
+## Agent Discovery and Renderer Definitions
 
-Plugins can provide behavioral rules that AI agents persist for guided tool usage. This is done via two manifest fields:
+When an agent starts a session, MCPViews tells it which renderers are available and how to format payloads for each one. This happens automatically through two mechanisms:
 
-### renderer_definitions
+1. **Auto-discovery** — MCPViews reads the `renderers` map and the tool cache to learn which renderers exist and which tools map to them. This gives agents the renderer names and tool associations with zero plugin effort.
 
-Structured metadata about your renderers, used by the `setup_agent_rules` MCP tool:
+2. **`renderer_definitions`** — The plugin provides structured metadata including `data_hint` (the payload shape) and optional `description` and `rule` fields. **This is essential** because MCPViews cannot infer what data shape each renderer expects from the tool cache alone.
+
+Without `renderer_definitions`, agents will know a renderer *exists* but won't know how to construct the `data` payload when calling `push_content`. Auto-discovery covers the "what" (renderer names + tool mappings); `renderer_definitions` covers the "how" (payload shapes + behavioral guidance).
+
+### renderer_definitions (Required for Agent Usability)
+
+Every renderer in your `renderers` map should have a corresponding entry in `renderer_definitions` with at minimum a `data_hint` field. The `data_hint` tells agents the expected shape of the `data` object when calling `push_content` with that renderer.
 
 ```json
 {
   "renderer_definitions": [
+    {
+      "name": "search_results",
+      "description": "Grouped search results with type chips and code snippets",
+      "scope": "tool",
+      "tools": ["search_codebase", "vector_search"],
+      "data_hint": "{ \"results\": [{ \"type\": \"string\", \"items\": [{ \"name\": \"string\", \"path\": \"string\", \"snippet\": \"string\" }] }] }"
+    },
     {
       "name": "my_custom_view",
       "description": "Custom visualization for analysis results",
@@ -336,12 +349,88 @@ Structured metadata about your renderers, used by the `setup_agent_rules` MCP to
 }
 ```
 
-| Field | Description |
-|-------|-------------|
-| `scope` | `"universal"` = any agent can use it. `"tool"` = tied to specific MCP tools. |
-| `tools` | For tool-scoped renderers: which tool names trigger this renderer. |
-| `data_hint` | JSON schema hint so agents know what data to pass. |
-| `rule` | Behavioral rule text returned by `setup_agent_rules`. |
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Renderer key — must match the value used in the `renderers` map. |
+| `description` | Yes | Human-readable description of what the renderer displays and when to use it. |
+| `scope` | No | `"universal"` = any agent can use it directly. `"tool"` = tied to specific MCP tools (default). |
+| `tools` | No | For tool-scoped renderers: which unprefixed tool names produce output for this renderer. |
+| `data_hint` | **Yes** | JSON schema hint showing the expected shape of the `data` payload. This is what agents use to construct correct `push_content` calls. Without it, agents cannot format payloads. |
+| `rule` | No | Behavioral rule text returned by `setup_agent_rules` for agent persistence. |
+
+**How auto-discovery and `renderer_definitions` interact:**
+
+- If a renderer name appears in both `renderers` (tool mapping) and `renderer_definitions`, the explicit definition is used — including its `data_hint`, `description`, and `rule`.
+- If a renderer name appears only in `renderers` (no `renderer_definitions` entry), MCPViews synthesizes a basic entry from tool cache metadata. Agents will see the renderer but won't know the payload shape. **This is a fallback, not the intended workflow.**
+
+### Generating renderer_definitions with an AI Agent
+
+If your plugin already has renderer JS files and a `renderers` map but no `renderer_definitions`, you can use the following prompt template with an AI agent to generate them. Copy this prompt, fill in the placeholders, and give it to an agent in your plugin's repository:
+
+<details>
+<summary>Agent prompt template — click to expand</summary>
+
+````markdown
+## Task: Add `renderer_definitions` to the plugin manifest
+
+This MCPViews plugin has a `renderers` map that maps tool names to renderer names,
+and renderer JS files in `renderers/`, but no `renderer_definitions` array in the
+manifest. Agents need `renderer_definitions` to know how to format `push_content`
+payloads for each renderer.
+
+### What to do
+
+1. Read the manifest file at `{path to your manifest.json}`.
+
+2. For each unique renderer name in the `renderers` map:
+   a. Find the corresponding JS file in the `renderers/` directory.
+   b. Read the `render(data, container)` function to understand what fields the
+      renderer reads from the `data` object. Look for `data.xyz` property accesses,
+      destructuring patterns, and any data shape comments at the top of the file.
+   c. Note: most renderers receive the raw MCP tool response as `data`. If the
+      renderer accesses `data.data`, the actual shape is nested — document the
+      inner shape, not the wrapper.
+
+3. For each renderer, create a `RendererDef` entry:
+   - `name`: the renderer key (e.g., `"search_results"`)
+   - `description`: what the renderer displays and when it's useful (1-2 sentences)
+   - `scope`: `"tool"` for renderers tied to specific tools, `"universal"` if any
+     agent can use it directly
+   - `tools`: list of unprefixed tool names from the `renderers` map that use this
+     renderer (e.g., `["search_codebase", "vector_search"]`)
+   - `data_hint`: a JSON schema hint string showing the expected shape of the `data`
+     payload. Use TypeScript-style notation for readability:
+     `"{ results: [{ type: string, items: [{ name: string, path: string }] }] }"`
+     Include all fields the renderer actually reads. Mark optional fields with `?`.
+   - `rule`: optional — only include if there are non-obvious usage constraints
+
+4. Add the `renderer_definitions` array to the manifest JSON.
+
+5. Do NOT change the `renderers` map or any other existing fields.
+
+### Example output for one renderer
+
+```json
+{
+  "name": "search_results",
+  "description": "Grouped search results with citation links and type-based filtering. Supports both raw MCP results and agent-composed answers with inline citations.",
+  "scope": "tool",
+  "tools": ["search_codebase", "vector_search"],
+  "data_hint": "{ answer?: string, citations?: { documents?: [{ index, id, title }], code?: [{ index, id, name, filePath }] }, results?: [{ type: string, items: [] }] }"
+}
+```
+
+### Verification
+
+After adding `renderer_definitions`:
+- The manifest must remain valid JSON
+- Every renderer name in the `renderers` map values should have a corresponding
+  `renderer_definitions` entry
+- Every `tools` array should only contain tool names that appear as keys in the
+  `renderers` map
+````
+
+</details>
 
 ### tool_rules
 
@@ -358,7 +447,7 @@ Per-tool behavioral rules (tool names are auto-prefixed):
 
 ## Suppressing Auto-Push for Mutation Tools
 
-By default, when a plugin tool is called, MCP Mux auto-pushes the result to the companion window. This works well for read/query tools whose results benefit from rich rendering. However, mutation tools (writes, deletes, management operations) typically return thin confirmation responses like `{"success": true}` that overwrite the current companion display with empty or broken previews.
+By default, when a plugin tool is called, MCPViews auto-pushes the result to the companion window. This works well for read/query tools whose results benefit from rich rendering. However, mutation tools (writes, deletes, management operations) typically return thin confirmation responses like `{"success": true}` that overwrite the current companion display with empty or broken previews.
 
 Use the `no_auto_push` field to declare which tools should skip auto-push:
 
@@ -396,7 +485,7 @@ my-plugin.zip
 - Zip-slip protection: paths containing `..` are rejected
 - Max download size: 50MB for remote downloads
 
-Plugins are extracted to `~/.mcp-mux/plugins/{plugin-name}/`.
+Plugins are extracted to `~/.mcpviews/plugins/{plugin-name}/`.
 
 ### Distributing via Download URL
 
@@ -448,7 +537,7 @@ Organizations can host their own plugin registries. A registry is a JSON file wi
 }
 ```
 
-Configure MCP Mux to use it by editing `~/.mcp-mux/config.json`:
+Configure MCPViews to use it by editing `~/.mcpviews/config.json`:
 
 ```json
 {
@@ -510,8 +599,8 @@ A full-featured plugin manifest with all optional fields:
 ## Troubleshooting
 
 **Plugin not loading:**
-- Check `mcp-mux-cli plugin list` -- is it listed?
-- Look at the MCP Mux logs for `[mcp-mux] Failed to parse plugin` errors
+- Check `mcpviews-cli plugin list` -- is it listed?
+- Look at the MCPViews logs for `[mcpviews] Failed to parse plugin` errors
 - Verify `manifest.json` is valid JSON with required `name` and `version` fields
 
 **Tools not appearing:**
@@ -522,7 +611,7 @@ A full-featured plugin manifest with all optional fields:
 **Auth failures:**
 - Bearer/API Key: check the environment variable is set, or configure via the Plugin Manager GUI
 - OAuth: verify `auth_url` and `token_url` are correct and the redirect flow completes
-- Tokens are stored in `~/.mcp-mux/auth/<plugin-name>.json` -- delete this file to re-authenticate
+- Tokens are stored in `~/.mcpviews/auth/<plugin-name>.json` -- delete this file to re-authenticate
 
 **Custom renderer not rendering:**
 - Verify the JS file is in `{plugin-dir}/renderers/` with a `.js` extension
