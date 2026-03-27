@@ -31,11 +31,11 @@
           "get_column_context": "column_context"
         },
         "mcp": {
-          "url": "https://ludflow.com/api/mcp",
+          "url": "https://app.ludflow.com/api/mcp",
           "auth": {
             "type": "oauth",
-            "auth_url": "https://ludflow.com/oauth/authorize",
-            "token_url": "https://ludflow.com/oauth/token",
+            "auth_url": "https://app.ludflow.com/oauth/authorize",
+            "token_url": "https://app.ludflow.com/oauth/token",
             "scopes": ["mcp:tools"]
           },
           "tool_prefix": "ludflow__"
