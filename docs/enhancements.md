@@ -1,7 +1,7 @@
 # Technical Debt & Enhancement Log
 
 **Last Updated:** 2026-03-26
-**Total Active Issues:** 0
+**Total Active Issues:** 1
 **Resolved This Month:** 25
 
 ---
@@ -22,7 +22,12 @@ _None_
 
 ### Low
 
-_None_
+#### L-011: PluginStore reconstructed via with_dir instead of reused in AppState
+- **File(s):** `src-tauri/src/state.rs`
+- **Principle:** DRY
+- **Description:** Both `new_with_store()` (line 35) and `reload_plugins()` (line 64) call `PluginStore::with_dir(self.plugin_store.dir().to_path_buf())` to create a fresh store from the path, rather than passing or cloning the stored `plugin_store` field directly. If `PluginStore` gains configuration beyond the directory path, these reconstructions would silently lose it.
+- **Suggested Fix:** If `PluginStore` implements `Clone`, use `self.plugin_store.clone()`. Otherwise, add a `PluginStore::clone_fresh()` method that preserves all configuration.
+- **Detected:** 2026-03-26 (commit 2b0f6cb)
 
 ---
 
@@ -77,7 +82,7 @@ _None_
 
 | Commit | Date | Score | Rating |
 |--------|------|-------|--------|
-| 2b0f6cb | 2026-03-26 | -- | -- |
+| 2b0f6cb | 2026-03-26 | 88/100 | Good |
 | aa69a19 | 2026-03-26 | 75/100 | Good |
 | b5f3eb7 | 2026-03-26 | 80/100 | Good |
 | 84e0e57 | 2026-03-26 | 78/100 | Good |

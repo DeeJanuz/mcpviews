@@ -245,7 +245,7 @@
         promptAuth(entry.manifest.name, auth);
       }
     } catch (e) {
-      alert('Failed to install plugin: ' + e);
+      showNotification('Failed to install plugin: ' + e, true);
       loadRegistry(); // Reset button states
     }
   }

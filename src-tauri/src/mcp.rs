@@ -86,28 +86,19 @@ async fn build_instructions(state: &Arc<TokioMutex<AsyncAppState>>) -> String {
         }
     }
 
-    instructions.push_str("\n## When to Push to the Companion Window\n\n");
+    instructions.push_str("\n## Sub-Agent Restriction\n\n");
     instructions.push_str(
-        "Push content when it benefits from visual diagrams. If it doesn't need a mermaid\n\
-         diagram, it doesn't need a push — just explain it in chat.\n\n\
-         Every push MUST include at least one ```mermaid block (flowchart, sequenceDiagram,\n\
-         erDiagram, classDiagram, graph TD/LR). Content that warrants pushing: architecture,\n\
-         data flows, system diagrams, API designs, database schemas, networking topology,\n\
-         implementation plans with structural decisions.\n\n\
-         ```\n\
-         push_content({\n\
-           tool_name: \"rich_content\",\n\
-           data: {\n\
-             title: \"Implementation Plan: <feature name>\",\n\
-             body: \"## Architecture\\n```mermaid\\nflowchart TD\\n  A[Start] --> B[Process]\\n```\\n## Changes\\n| File | Change |\\n...\"\n\
-           }\n\
-         })\n\
-         ```\n\n\
-         For plans requiring explicit approval, use `push_review` instead — this blocks\n\
-         until the user accepts/rejects in the companion window.\n\n\
-         SUB-AGENT RESTRICTION: Only the main/coordinator agent may call `push_content`,\n\
-         `push_review`, and `push_check`. Sub-agents and background agents must NOT call\n\
-         these tools — they return results to the coordinator, which decides what to push.\n"
+        "ONLY the main/coordinator agent may call `push_content`, `push_review`, and \
+         `push_check`. Sub-agents and background agents must NEVER call these tools. \
+         Sub-agents return results to the coordinator, which decides what (if anything) \
+         to push to the companion window.\n"
+    );
+
+    instructions.push_str("\n## Complex Explanations → Companion Window\n\n");
+    instructions.push_str(
+        "Push complex explanations to the companion window instead of explaining \
+         them inline in chat. Call `setup_agent_rules` once per project to receive \
+         detailed usage rules for all renderers and tools.\n"
     );
 
     instructions.push_str("\n## Agent Rule Bootstrap\n\n");
