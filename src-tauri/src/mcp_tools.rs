@@ -541,6 +541,77 @@ fn builtin_renderer_definitions() -> Vec<RendererDef> {
     ]
 }
 
+/// Synthesize `RendererDef` entries from a manifest's `renderers` map for any
+/// renderer names not already in `known_names`. Uses cached tool definitions
+/// to derive descriptions when available.
+fn synthesize_renderer_defs(
+    manifest: &mcpviews_shared::PluginManifest,
+    cached_tools: Option<&[serde_json::Value]>,
+    known_names: &std::collections::HashSet<&str>,
+) -> Vec<RendererDef> {
+    // Group tools by renderer name, skipping already-known renderers
+    let mut renderer_tools: std::collections::HashMap<&str, Vec<&str>> =
+        std::collections::HashMap::new();
+    for (tool_name, renderer_name) in &manifest.renderers {
+        if !known_names.contains(renderer_name.as_str()) {
+            renderer_tools
+                .entry(renderer_name.as_str())
+                .or_default()
+                .push(tool_name.as_str());
+        }
+    }
+
+    let prefix = manifest
+        .mcp
+        .as_ref()
+        .map(|m| m.tool_prefix.as_str())
+        .unwrap_or("");
+
+    let mut result = Vec::new();
+    for (renderer_name, tool_names) in renderer_tools {
+        let mut tool_descriptions: Vec<String> = Vec::new();
+
+        for tool_name in &tool_names {
+            let prefixed = format!("{}{}", prefix, tool_name);
+            if let Some(tools) = cached_tools {
+                if let Some(tool_def) = tools
+                    .iter()
+                    .find(|t| t.get("name").and_then(|n| n.as_str()) == Some(&prefixed))
+                {
+                    if let Some(desc) = tool_def.get("description").and_then(|d| d.as_str()) {
+                        tool_descriptions.push(format!("- {}: {}", tool_name, desc));
+                    }
+                }
+            }
+        }
+
+        let description = if tool_descriptions.is_empty() {
+            format!("Renderer for {} plugin", manifest.name)
+        } else {
+            format!(
+                "Renders output from these tools:\n{}",
+                tool_descriptions.join("\n")
+            )
+        };
+
+        let data_hint = format!(
+            "Pass the result from any of these tools: {}. The data shape matches the tool's response.",
+            tool_names.join(", ")
+        );
+
+        result.push(RendererDef {
+            name: renderer_name.to_string(),
+            description,
+            scope: "tool".to_string(),
+            tools: tool_names.iter().map(|s| s.to_string()).collect(),
+            data_hint: Some(data_hint),
+            rule: None,
+        });
+    }
+
+    result
+}
+
 pub fn available_renderers(state: &std::sync::Arc<crate::state::AppState>) -> Vec<RendererDef> {
     let mut renderers = builtin_renderer_definitions();
     let registry = state.plugin_registry.lock().unwrap();
@@ -554,70 +625,8 @@ pub fn available_renderers(state: &std::sync::Arc<crate::state::AppState>) -> Ve
             renderers.iter().map(|r| r.name.as_str()).collect();
 
         // 3. Synthesize from renderers map for any not already covered
-        //    Group tools by renderer name
-        let mut renderer_tools: std::collections::HashMap<&str, Vec<&str>> =
-            std::collections::HashMap::new();
-        for (tool_name, renderer_name) in &manifest.renderers {
-            if !known.contains(renderer_name.as_str()) {
-                renderer_tools
-                    .entry(renderer_name.as_str())
-                    .or_default()
-                    .push(tool_name.as_str());
-            }
-        }
-
-        // 4. For each discovered renderer, build RendererDef using tool cache info
-        let prefix = manifest
-            .mcp
-            .as_ref()
-            .map(|m| m.tool_prefix.as_str())
-            .unwrap_or("");
-        let cached_tools = registry.tool_cache.entries.get(idx).map(|e| &e.tools);
-
-        for (renderer_name, tool_names) in renderer_tools {
-            let mut tool_descriptions: Vec<String> = Vec::new();
-
-            for tool_name in &tool_names {
-                // Look up tool in cache by prefixed name
-                let prefixed = format!("{}{}", prefix, tool_name);
-                if let Some(tools) = cached_tools {
-                    if let Some(tool_def) = tools
-                        .iter()
-                        .find(|t| t.get("name").and_then(|n| n.as_str()) == Some(&prefixed))
-                    {
-                        if let Some(desc) =
-                            tool_def.get("description").and_then(|d| d.as_str())
-                        {
-                            tool_descriptions
-                                .push(format!("- {}: {}", tool_name, desc));
-                        }
-                    }
-                }
-            }
-
-            let description = if tool_descriptions.is_empty() {
-                format!("Renderer for {} plugin", manifest.name)
-            } else {
-                format!(
-                    "Renders output from these tools:\n{}",
-                    tool_descriptions.join("\n")
-                )
-            };
-
-            let data_hint = format!(
-                "Pass the result from any of these tools: {}. The data shape matches the tool's response.",
-                tool_names.join(", ")
-            );
-
-            renderers.push(RendererDef {
-                name: renderer_name.to_string(),
-                description,
-                scope: "tool".to_string(),
-                tools: tool_names.iter().map(|s| s.to_string()).collect(),
-                data_hint: Some(data_hint),
-                rule: None,
-            });
-        }
+        let cached_tools = registry.tool_cache.plugin_tools(idx);
+        renderers.extend(synthesize_renderer_defs(manifest, cached_tools, &known));
     }
 
     renderers
@@ -966,5 +975,119 @@ mod tests {
     fn test_persistence_instructions_unknown() {
         let instr = persistence_instructions("some_unknown_agent");
         assert!(instr.contains("Ask the user"));
+    }
+
+    // ─── synthesize_renderer_defs tests ───
+
+    fn make_manifest_with_renderers(
+        name: &str,
+        renderers: std::collections::HashMap<String, String>,
+        prefix: &str,
+    ) -> PluginManifest {
+        PluginManifest {
+            name: name.to_string(),
+            version: "1.0.0".to_string(),
+            renderers,
+            mcp: Some(PluginMcpConfig {
+                url: "http://localhost:8080".into(),
+                auth: None,
+                tool_prefix: prefix.to_string(),
+            }),
+            renderer_definitions: vec![],
+            tool_rules: std::collections::HashMap::new(),
+            no_auto_push: vec![],
+        }
+    }
+
+    #[test]
+    fn test_synthesize_with_tool_cache_data() {
+        let mut renderers_map = std::collections::HashMap::new();
+        renderers_map.insert("search_codebase".to_string(), "search_results".to_string());
+        let manifest = make_manifest_with_renderers("ludflow", renderers_map, "ludflow__");
+
+        let cached_tools = vec![
+            serde_json::json!({
+                "name": "ludflow__search_codebase",
+                "description": "Search the codebase for matching code"
+            }),
+        ];
+
+        let known = std::collections::HashSet::new();
+        let result = synthesize_renderer_defs(&manifest, Some(&cached_tools), &known);
+
+        assert_eq!(result.len(), 1);
+        let def = &result[0];
+        assert_eq!(def.name, "search_results");
+        assert!(def.description.contains("search_codebase"));
+        assert!(def.description.contains("Search the codebase"));
+        assert_eq!(def.tools, vec!["search_codebase"]);
+        assert!(def.data_hint.is_some());
+        assert_eq!(def.scope, "tool");
+        assert!(def.rule.is_none());
+    }
+
+    #[test]
+    fn test_synthesize_skips_known_renderers() {
+        let mut renderers_map = std::collections::HashMap::new();
+        renderers_map.insert("search_codebase".to_string(), "search_results".to_string());
+        let manifest = make_manifest_with_renderers("ludflow", renderers_map, "ludflow__");
+
+        let cached_tools = vec![
+            serde_json::json!({
+                "name": "ludflow__search_codebase",
+                "description": "Search the codebase"
+            }),
+        ];
+
+        let mut known = std::collections::HashSet::new();
+        known.insert("search_results");
+        let result = synthesize_renderer_defs(&manifest, Some(&cached_tools), &known);
+
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_synthesize_without_cache_data() {
+        let mut renderers_map = std::collections::HashMap::new();
+        renderers_map.insert("search_codebase".to_string(), "search_results".to_string());
+        let manifest = make_manifest_with_renderers("ludflow", renderers_map, "ludflow__");
+
+        let known = std::collections::HashSet::new();
+        let result = synthesize_renderer_defs(&manifest, None, &known);
+
+        assert_eq!(result.len(), 1);
+        let def = &result[0];
+        assert_eq!(def.name, "search_results");
+        assert!(def.description.contains("Renderer for ludflow plugin"));
+        assert_eq!(def.tools, vec!["search_codebase"]);
+    }
+
+    #[test]
+    fn test_synthesize_groups_multiple_tools_under_one_renderer() {
+        let mut renderers_map = std::collections::HashMap::new();
+        renderers_map.insert("search_codebase".to_string(), "search_results".to_string());
+        renderers_map.insert("vector_search".to_string(), "search_results".to_string());
+        let manifest = make_manifest_with_renderers("ludflow", renderers_map, "ludflow__");
+
+        let cached_tools = vec![
+            serde_json::json!({
+                "name": "ludflow__search_codebase",
+                "description": "Search the codebase"
+            }),
+            serde_json::json!({
+                "name": "ludflow__vector_search",
+                "description": "Vector search"
+            }),
+        ];
+
+        let known = std::collections::HashSet::new();
+        let result = synthesize_renderer_defs(&manifest, Some(&cached_tools), &known);
+
+        assert_eq!(result.len(), 1);
+        let def = &result[0];
+        assert_eq!(def.name, "search_results");
+        assert_eq!(def.tools.len(), 2);
+        assert!(def.tools.contains(&"search_codebase".to_string()));
+        assert!(def.tools.contains(&"vector_search".to_string()));
     }
 }

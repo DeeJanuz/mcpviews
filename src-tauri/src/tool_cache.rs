@@ -123,6 +123,11 @@ impl ToolCache {
         }
     }
 
+    /// Get cached tools for a plugin by index
+    pub fn plugin_tools(&self, idx: usize) -> Option<&[Value]> {
+        self.entries.get(idx).map(|e| e.tools.as_slice())
+    }
+
     /// Get tool count for a plugin
     pub fn tool_count(&self, idx: usize) -> usize {
         self.entries.get(idx).map(|e| e.tools.len()).unwrap_or(0)
@@ -254,6 +259,38 @@ mod tests {
         let mut cache = ToolCache::new(3);
         cache.remove(1);
         assert_eq!(cache.entries.len(), 2);
+    }
+
+    #[test]
+    fn test_plugin_tools_returns_slice_for_valid_index() {
+        let mut cache = ToolCache::new(1);
+        cache.apply(
+            0,
+            "p__",
+            vec![
+                serde_json::json!({"name": "a", "description": "Tool A"}),
+                serde_json::json!({"name": "b", "description": "Tool B"}),
+            ],
+        );
+        let tools = cache.plugin_tools(0);
+        assert!(tools.is_some());
+        let tools = tools.unwrap();
+        assert_eq!(tools.len(), 2);
+        assert_eq!(tools[0].get("name").unwrap().as_str().unwrap(), "p__a");
+    }
+
+    #[test]
+    fn test_plugin_tools_returns_none_for_invalid_index() {
+        let cache = ToolCache::new(1);
+        assert!(cache.plugin_tools(5).is_none());
+    }
+
+    #[test]
+    fn test_plugin_tools_returns_empty_slice_for_unfilled_entry() {
+        let cache = ToolCache::new(2);
+        let tools = cache.plugin_tools(1);
+        assert!(tools.is_some());
+        assert!(tools.unwrap().is_empty());
     }
 
     #[test]
