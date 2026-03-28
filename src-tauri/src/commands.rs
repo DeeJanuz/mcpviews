@@ -366,6 +366,32 @@ pub async fn update_plugin(
     Ok(())
 }
 
+#[tauri::command]
+pub async fn save_file(
+    app_handle: tauri::AppHandle,
+    filename: String,
+    content: String,
+) -> Result<bool, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let path = app_handle
+        .dialog()
+        .file()
+        .set_file_name(&filename)
+        .add_filter("CSV", &["csv"])
+        .add_filter("All Files", &["*"])
+        .blocking_save_file();
+
+    match path {
+        Some(file_path) => {
+            std::fs::write(file_path.as_path().unwrap(), &content)
+                .map_err(|e| format!("Failed to write file: {}", e))?;
+            Ok(true)
+        }
+        None => Ok(false), // user cancelled
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

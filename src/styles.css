@@ -604,15 +604,22 @@ body {
 .cite-dl { color: var(--cite-dl); background: var(--cite-dl-bg); border-color: var(--cite-dl-border); }
 .cite-dl:hover { box-shadow: 0 2px 8px var(--cite-dl-border); }
 
-/* -- Rich content title -- */
+/* -- Rich content header -- */
+.rc-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
 .rc-title {
   font-size: var(--text-h1);
   font-weight: var(--weight-bold);
   color: var(--text-primary);
-  margin: 0 0 var(--space-4) 0;
+  margin: 0;
   line-height: var(--leading-tight);
   letter-spacing: var(--tracking-tight);
+  flex: 1;
 }
+.rc-view-toggle { flex-shrink: 0; padding: var(--space-1) var(--space-2); font-size: var(--text-xs); font-family: var(--font-sans); color: var(--text-secondary); background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--border-radius-sm); cursor: pointer; transition: background var(--transition-fast), color var(--transition-fast); white-space: nowrap; }
+.rc-view-toggle:hover { color: var(--text-primary); background: var(--bg-surface-inset); }
+.rc-view-toggle-active { background: var(--color-info-bg); color: var(--color-info-text); border-color: var(--color-info); }
+.rc-raw-markdown { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--border-radius-md); padding: var(--space-4); overflow-x: auto; white-space: pre-wrap; word-break: break-word; font-family: var(--font-mono); font-size: var(--text-small); color: var(--text-primary); line-height: var(--leading-relaxed); }
+.rc-raw-markdown code { font-family: inherit; font-size: inherit; color: inherit; background: none; padding: 0; }
 
 /* -- Markdown content -- */
 .md-content { color: var(--text-primary); line-height: var(--leading-relaxed); font-size: var(--text-body); }
@@ -1064,6 +1071,105 @@ body {
 .mermaid-rendered { border: 1px solid var(--glass-border); border-radius: var(--border-radius-md); padding: 16px; background: var(--glass-bg); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); cursor: pointer; transition: box-shadow var(--transition-fast); text-align: center; overflow-x: auto; }
 .mermaid-rendered:hover { box-shadow: var(--glass-shadow); }
 .mermaid-rendered svg { max-width: 100%; height: auto; }
+/* Dark mode: force mermaid SVG text to be readable */
+[data-theme="dark"] .mermaid-rendered svg text,
+[data-theme="dark"] .mermaid-rendered svg .nodeLabel,
+[data-theme="dark"] .mermaid-rendered svg .edgeLabel,
+[data-theme="dark"] .mermaid-rendered svg .label,
+[data-theme="dark"] .mermaid-rendered svg .actor,
+[data-theme="dark"] .mermaid-rendered svg .messageText,
+[data-theme="dark"] .mermaid-rendered svg .loopText,
+[data-theme="dark"] .mermaid-rendered svg .noteText,
+[data-theme="dark"] .mermaid-rendered svg .sectionTitle,
+[data-theme="dark"] .mermaid-rendered svg .taskText,
+[data-theme="dark"] .mermaid-rendered svg .titleText {
+  fill: var(--text-primary) !important;
+  color: var(--text-primary) !important;
+}
+[data-theme="dark"] .mermaid-rendered svg .node rect,
+[data-theme="dark"] .mermaid-rendered svg .node circle,
+[data-theme="dark"] .mermaid-rendered svg .node polygon {
+  fill: var(--glass-bg-heavy) !important;
+  stroke: var(--border-default) !important;
+}
+/* Sequence diagram participant boxes and notes */
+[data-theme="dark"] .mermaid-rendered svg rect.actor {
+  fill: var(--glass-bg-heavy) !important;
+  stroke: var(--border-default) !important;
+}
+[data-theme="dark"] .mermaid-rendered svg .note rect,
+[data-theme="dark"] .mermaid-rendered svg rect.note {
+  fill: var(--bg-surface-inset) !important;
+  stroke: var(--border-default) !important;
+}
+[data-theme="dark"] .mermaid-rendered svg .activation0,
+[data-theme="dark"] .mermaid-rendered svg .activation1,
+[data-theme="dark"] .mermaid-rendered svg .activation2 {
+  fill: var(--bg-surface-inset) !important;
+  stroke: var(--border-default) !important;
+}
+/* Flowchart node fills — including label containers and edge labels */
+[data-theme="dark"] .mermaid-rendered svg .label-container,
+[data-theme="dark"] .mermaid-rendered svg .edgeLabel rect,
+[data-theme="dark"] .mermaid-rendered svg .cluster rect {
+  fill: var(--glass-bg-heavy) !important;
+  stroke: var(--border-default) !important;
+}
+/* Loop/alt boxes in sequence diagrams */
+[data-theme="dark"] .mermaid-rendered svg .loopLine {
+  stroke: var(--border-default) !important;
+}
+[data-theme="dark"] .mermaid-rendered svg rect.loopBox {
+  fill: var(--bg-surface-inset) !important;
+}
+/* Keep edge/arrow lines visible in dark mode */
+[data-theme="dark"] .mermaid-rendered svg .edgePath .path,
+[data-theme="dark"] .mermaid-rendered svg .flowchart-link,
+[data-theme="dark"] .mermaid-rendered svg line,
+[data-theme="dark"] .mermaid-rendered svg .messageLine0,
+[data-theme="dark"] .mermaid-rendered svg .messageLine1 {
+  stroke: var(--text-secondary) !important;
+}
+/* Sequence diagram actor boxes */
+[data-theme="dark"] .mermaid-rendered svg .actor-line {
+  stroke: var(--border-default) !important;
+}
+/* Modal gets same treatment */
+[data-theme="dark"] .mermaid-modal-body svg text,
+[data-theme="dark"] .mermaid-modal-body svg .nodeLabel,
+[data-theme="dark"] .mermaid-modal-body svg .edgeLabel,
+[data-theme="dark"] .mermaid-modal-body svg .label,
+[data-theme="dark"] .mermaid-modal-body svg .actor,
+[data-theme="dark"] .mermaid-modal-body svg .messageText,
+[data-theme="dark"] .mermaid-modal-body svg .loopText,
+[data-theme="dark"] .mermaid-modal-body svg .noteText,
+[data-theme="dark"] .mermaid-modal-body svg .sectionTitle,
+[data-theme="dark"] .mermaid-modal-body svg .taskText,
+[data-theme="dark"] .mermaid-modal-body svg .titleText {
+  fill: var(--text-primary) !important;
+  color: var(--text-primary) !important;
+}
+[data-theme="dark"] .mermaid-modal-body svg .node rect,
+[data-theme="dark"] .mermaid-modal-body svg .node circle,
+[data-theme="dark"] .mermaid-modal-body svg .node polygon {
+  fill: var(--glass-bg-heavy) !important;
+  stroke: var(--border-default) !important;
+}
+[data-theme="dark"] .mermaid-modal-body svg rect.actor {
+  fill: var(--glass-bg-heavy) !important;
+  stroke: var(--border-default) !important;
+}
+[data-theme="dark"] .mermaid-modal-body svg .note rect,
+[data-theme="dark"] .mermaid-modal-body svg rect.note {
+  fill: var(--bg-surface-inset) !important;
+  stroke: var(--border-default) !important;
+}
+[data-theme="dark"] .mermaid-modal-body svg .label-container,
+[data-theme="dark"] .mermaid-modal-body svg .edgeLabel rect,
+[data-theme="dark"] .mermaid-modal-body svg .cluster rect {
+  fill: var(--glass-bg-heavy) !important;
+  stroke: var(--border-default) !important;
+}
 .mermaid-error { padding: 12px; border: 1px solid var(--color-error-border); border-radius: 8px; background: #fef2f2; }
 .mermaid-error-label { font-size: 12px; font-weight: 600; color: var(--color-error-text); }
 

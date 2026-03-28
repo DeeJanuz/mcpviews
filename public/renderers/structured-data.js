@@ -82,7 +82,11 @@
       '.sd-empty { font-family: var(--font-sans); font-size: var(--text-body); color: var(--text-tertiary); padding: var(--space-6); text-align: center; }',
       '.sd-row-rejected { opacity: 0.4; }',
       '.sd-row-rejected .sd-td { background: var(--bg-surface-subtle); color: var(--text-tertiary); }',
-      '.sd-table-name { font-family: var(--font-sans); font-size: var(--text-body); font-weight: var(--weight-medium); color: var(--text-secondary); margin: 0 0 var(--space-2) 0; }',
+      '.sd-table-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-2); }',
+      '.sd-table-name { font-family: var(--font-sans); font-size: var(--text-body); font-weight: var(--weight-medium); color: var(--text-secondary); margin: 0; }',
+      '.sd-csv-btn { flex-shrink: 0; padding: var(--space-1) var(--space-2); font-size: var(--text-xs); font-family: var(--font-sans); color: var(--text-secondary); background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--border-radius-sm); cursor: pointer; transition: background 0.15s, color 0.15s; }',
+      '.sd-csv-btn:hover { color: var(--text-primary); background: var(--bg-surface-inset); }',
+      '.sd-csv-btn-copied { background: var(--color-success-bg) !important; color: var(--color-success-text) !important; border-color: var(--color-success) !important; }',
       '.sd-toggle-spacer { width: 24px; min-width: 24px; }',
       '.sd-legend { display: flex; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-3); font-family: var(--font-sans); font-size: var(--text-xs); color: var(--text-secondary); }',
       '.sd-legend-item { display: inline-flex; align-items: center; gap: var(--space-1); }',
@@ -308,16 +312,105 @@
     return tbody;
   }
 
+  function exportTableCsv(tableData, state) {
+    var columns = tableData.columns;
+
+    function escapeCsv(val) {
+      var s = String(val == null ? '' : val);
+      if (s.indexOf(',') !== -1 || s.indexOf('"') !== -1 || s.indexOf('\n') !== -1) {
+        return '"' + s.replace(/"/g, '""') + '"';
+      }
+      return s;
+    }
+
+    function collectRows(rows, depth) {
+      var result = [];
+      if (!rows) return result;
+      rows.forEach(function (row) {
+        var cells = columns.map(function (col) {
+          var modKey = row.id + '.' + col.id;
+          if (state.modifications[modKey]) {
+            return JSON.parse(state.modifications[modKey]).value;
+          }
+          return getCellValue(row, col.id);
+        });
+        result.push(cells);
+        if (row.children && row.children.length > 0) {
+          result = result.concat(collectRows(row.children, depth + 1));
+        }
+      });
+      return result;
+    }
+
+    var header = columns.map(function (col) { return escapeCsv(col.name); });
+    var rows = collectRows(tableData.rows, 0);
+    var lines = [header.join(',')];
+    rows.forEach(function (cells) {
+      lines.push(cells.map(escapeCsv).join(','));
+    });
+
+    var csv = lines.join('\n');
+    var fileName = (tableData.name || tableData.id || 'table') + '.csv';
+
+    // Use Tauri IPC save_file command (native save dialog)
+    if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {
+      return window.__TAURI__.core.invoke('save_file', {
+        filename: fileName,
+        content: csv
+      });
+    }
+
+    // Fallback for non-Tauri environments: blob download
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   function buildTableContainer(tableData, state, reviewRequired, onDecision) {
     var container = document.createElement('div');
     container.className = 'sd-container';
+
+    // Table header row with name and CSV download
+    var tableHeader = document.createElement('div');
+    tableHeader.className = 'sd-table-header';
 
     if (tableData.name) {
       var nameEl = document.createElement('h3');
       nameEl.className = 'sd-table-name';
       nameEl.textContent = tableData.name;
-      container.appendChild(nameEl);
+      tableHeader.appendChild(nameEl);
     }
+
+    var csvBtn = document.createElement('button');
+    csvBtn.className = 'sd-csv-btn';
+    csvBtn.textContent = 'CSV';
+    csvBtn.title = 'Download table as CSV';
+    csvBtn.addEventListener('click', function () {
+      var result = exportTableCsv(tableData, state);
+      if (result && typeof result.then === 'function') {
+        result.then(function (saved) {
+          if (saved) {
+            var orig = csvBtn.textContent;
+            csvBtn.textContent = 'Saved!';
+            csvBtn.classList.add('sd-csv-btn-copied');
+            setTimeout(function () {
+              csvBtn.textContent = orig;
+              csvBtn.classList.remove('sd-csv-btn-copied');
+            }, 1500);
+          }
+        });
+      }
+    });
+    tableHeader.appendChild(csvBtn);
+
+    container.appendChild(tableHeader);
 
     // Per-table Accept All / Reject All (review mode only)
     if (reviewRequired) {

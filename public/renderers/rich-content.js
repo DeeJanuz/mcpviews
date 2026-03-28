@@ -74,13 +74,26 @@
       return;
     }
 
-    // Title
+    // Title + view toggle
+    var headerRow = document.createElement('div');
+    headerRow.className = 'rc-header';
+
     if (data.title) {
       var h1 = document.createElement('h1');
       h1.className = 'rc-title';
       h1.textContent = data.title;
-      container.appendChild(h1);
+      headerRow.appendChild(h1);
     }
+
+    if (data.body) {
+      var toggleBtn = document.createElement('button');
+      toggleBtn.className = 'rc-view-toggle';
+      toggleBtn.textContent = 'Markdown';
+      toggleBtn.title = 'View raw markdown';
+      headerRow.appendChild(toggleBtn);
+    }
+
+    container.appendChild(headerRow);
 
     // Body
     if (data.body) {
@@ -93,11 +106,39 @@
         contentEl = utils.renderMarkdown(data.body);
       }
 
+      // Raw markdown view (hidden by default)
+      var rawEl = document.createElement('pre');
+      rawEl.className = 'rc-raw-markdown';
+      rawEl.style.display = 'none';
+      var rawCode = document.createElement('code');
+      rawCode.textContent = data.body;
+      rawEl.appendChild(rawCode);
+
       if (contentEl instanceof HTMLElement) {
         container.appendChild(contentEl);
+        container.appendChild(rawEl);
 
         // Render mermaid diagrams
         utils.renderMermaidBlocks(contentEl);
+
+        // Toggle between rendered and raw
+        var showingRaw = false;
+        toggleBtn.addEventListener('click', function () {
+          showingRaw = !showingRaw;
+          if (showingRaw) {
+            contentEl.style.display = 'none';
+            rawEl.style.display = '';
+            toggleBtn.textContent = 'Rendered';
+            toggleBtn.title = 'View rendered content';
+            toggleBtn.classList.add('rc-view-toggle-active');
+          } else {
+            contentEl.style.display = '';
+            rawEl.style.display = 'none';
+            toggleBtn.textContent = 'Markdown';
+            toggleBtn.title = 'View raw markdown';
+            toggleBtn.classList.remove('rc-view-toggle-active');
+          }
+        });
       }
 
       // Wire up citation clicks

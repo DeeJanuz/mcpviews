@@ -41,6 +41,7 @@
             var rendered = document.createElement('div');
             rendered.className = 'mermaid-rendered';
             rendered.innerHTML = result.svg;
+            rendered.setAttribute('data-mermaid-source', encoded);
             rendered.title = 'Click to expand';
             rendered.addEventListener('click', function () {
               openMermaidModal(rendered);
@@ -263,6 +264,37 @@
     }
   }
 
+  // Re-render all mermaid diagrams when theme changes
+  function reRenderAll() {
+    var rendered = document.querySelectorAll('.mermaid-rendered[data-mermaid-source]');
+    if (rendered.length === 0) return;
+
+    var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    if (typeof mermaid !== 'undefined' && mermaid.initialize) {
+      mermaid.initialize({ startOnLoad: false, theme: isDark ? 'dark' : 'default', securityLevel: 'loose', suppressErrorRendering: true });
+    }
+
+    for (var i = 0; i < rendered.length; i++) {
+      (function(el) {
+        var encoded = el.getAttribute('data-mermaid-source');
+        if (!encoded) return;
+
+        var source;
+        try {
+          source = decodeURIComponent(escape(atob(encoded)));
+        } catch (e) { return; }
+
+        var id = 'mermaid-rerender-' + (++_mermaidCounter);
+        mermaid.render(id, source)
+          .then(function(result) {
+            el.innerHTML = result.svg;
+          })
+          .catch(function() { /* keep existing SVG on error */ });
+      })(rendered[i]);
+    }
+  }
+
   // Expose via shared utils (loaded after shared.js)
   utils.renderMermaidBlocks = renderMermaidBlocks;
+  utils.reRenderMermaid = reRenderAll;
 })();

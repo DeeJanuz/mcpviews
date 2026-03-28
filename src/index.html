@@ -54,6 +54,9 @@
         if (typeof mermaid !== 'undefined') {
           mermaid.initialize({ startOnLoad: false, theme: next === 'dark' ? 'dark' : 'default', securityLevel: 'loose', suppressErrorRendering: true });
         }
+        if (window.__companionUtils && window.__companionUtils.reRenderMermaid) {
+          window.__companionUtils.reRenderMermaid();
+        }
       });
     }
 
@@ -64,6 +67,9 @@
           html.setAttribute('data-theme', theme);
           if (typeof mermaid !== 'undefined') {
             mermaid.initialize({ startOnLoad: false, theme: theme === 'dark' ? 'dark' : 'default', securityLevel: 'loose', suppressErrorRendering: true });
+          }
+          if (window.__companionUtils && window.__companionUtils.reRenderMermaid) {
+            window.__companionUtils.reRenderMermaid();
           }
         }
       });
