@@ -27,7 +27,7 @@ $Platforms = @(
     @{
         Name       = "Claude Code CLI"
         Binary     = "claude"
-        ConfigPath = Join-Path $env:USERPROFILE ".claude.json"
+        ConfigPath = Join-Path $env:USERPROFILE ".claude\.mcp.json"
         JsonKey    = "mcpServers"
         Format     = "json"
     },
@@ -174,7 +174,7 @@ function Install-JsonConfig {
 
     # Add mcpviews entry
     # Claude Desktop requires stdio transport via mcp-remote bridge
-    if ($Platform.Name -eq "Claude Desktop") {
+    if ($Platform.Name -eq "Claude Desktop" -or $Platform.Name -eq "Claude Code CLI") {
         $mcpMuxEntry = [PSCustomObject]@{
             command = "npx"
             args    = @("-y", "mcp-remote", $MCPVIEWS_URL)

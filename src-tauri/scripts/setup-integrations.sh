@@ -40,7 +40,7 @@ config_path_for() {
       fi
       ;;
     1) # Claude Code CLI
-      echo "$HOME/.claude.json"
+      echo "$HOME/.claude/.mcp.json"
       ;;
     2) # Cursor IDE
       echo "$HOME/.cursor/mcp.json"
@@ -72,7 +72,7 @@ platform_detected() {
       fi
       ;;
     1) # Claude Code CLI
-      command -v claude &>/dev/null || [[ -f "$HOME/.claude.json" ]]
+      command -v claude &>/dev/null || [[ -d "$HOME/.claude" ]]
       ;;
     2) # Cursor IDE
       [[ -d "$HOME/.cursor" ]]
@@ -132,10 +132,10 @@ fi
 mcpviews_entry_for() {
   local idx="$1"
   case "$idx" in
-    0) # Claude Desktop — needs mcp-remote bridge (stdio transport only)
+    0|1) # Claude Desktop & Claude Code CLI — need mcp-remote bridge
       echo "{\"command\":\"npx\",\"args\":[\"-y\",\"mcp-remote\",\"$MCPVIEWS_URL\"]}"
       ;;
-    *) # All other JSON platforms support url directly
+    *) # Other JSON platforms support url directly
       echo "{\"url\":\"$MCPVIEWS_URL\"}"
       ;;
   esac
