@@ -382,7 +382,7 @@ Check the status or result of a previously pushed review session.
 
 ### `init_session`
 
-Initialize MCPViews for the current session. Returns current renderer definitions, behavioral rules, plugin auth status, and persistence instructions. Should be called at the start of every new agent session.
+Initialize MCPViews for the current session. Returns current renderer definitions, behavioral rules, plugin auth status, and persistence instructions. Must be called at the start of every conversation, chat session, or interaction -- not just once.
 
 **Parameters:**
 | Field | Type | Required | Description |
@@ -428,7 +428,7 @@ The `available_tools` array contains lightweight summaries (name and description
 
 ### `mcpviews_setup`
 
-One-time setup for MCPViews. Returns instructions for persisting a session-start rule that ensures `init_session` is called automatically in every new session. Also returns current rules and plugin status.
+One-time setup for MCPViews. Returns instructions for persisting a rule that ensures `init_session` is called automatically at the start of every conversation, chat session, or interaction. Also returns current rules and plugin status.
 
 **Parameters:**
 | Field | Type | Required | Description |
