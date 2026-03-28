@@ -436,17 +436,17 @@ async fn call_init_session(
 /// Return platform-specific instructions for configuring automatic session initialization.
 pub(crate) fn setup_instructions(agent_type: &str) -> String {
     match agent_type {
-        "claude_code" => "Add a rule in `.claude/rules/mcpviews-init.md` containing: 'At the start of every session, call the `init_session` MCP tool to initialize MCPViews and get current renderer definitions, behavioral rules, and plugin auth status.'".to_string(),
+        "claude_code" => "Add a rule in `.claude/rules/mcpviews-init.md` containing: 'IMPORTANT: At the start of every conversation, chat session, or interaction, call the `init_session` MCP tool to initialize MCPViews and get current renderer definitions, behavioral rules, plugin auth status, and the list of available tools. This must happen every time — not just once.'".to_string(),
 
-        "claude_desktop" => "Create a memory: 'At the start of every conversation, call the `init_session` MCP tool to initialize MCPViews and get current renderer definitions and rules.'".to_string(),
+        "claude_desktop" => "Create a memory: 'IMPORTANT: At the start of every conversation, chat session, or interaction, call the `init_session` MCP tool to initialize MCPViews and get current renderer definitions, rules, and the list of available tools. This must happen every time — not just once.'".to_string(),
 
-        "cursor" => "Add to `.cursor/rules/mcpviews-init.mdc`: 'At the start of every session, call the `init_session` MCP tool to initialize MCPViews.'".to_string(),
+        "cursor" => "Add to `.cursor/rules/mcpviews-init.mdc`: 'IMPORTANT: At the start of every conversation, chat session, or interaction, call the `init_session` MCP tool to initialize MCPViews and get current renderer definitions, rules, and the list of available tools. This must happen every time — not just once.'".to_string(),
 
-        "codex" | "opencode" | "antigravity" => "Add to `AGENTS.md`: 'At the start of every session, call the `init_session` MCP tool to initialize MCPViews.'".to_string(),
+        "codex" | "opencode" | "antigravity" => "Add to `AGENTS.md`: 'IMPORTANT: At the start of every conversation, chat session, or interaction, call the `init_session` MCP tool to initialize MCPViews and get current renderer definitions, rules, and the list of available tools. This must happen every time — not just once.'".to_string(),
 
-        "windsurf" => "Add to `.windsurfrules`: 'At the start of every session, call the `init_session` MCP tool to initialize MCPViews.'".to_string(),
+        "windsurf" => "Add to `.windsurfrules`: 'IMPORTANT: At the start of every conversation, chat session, or interaction, call the `init_session` MCP tool to initialize MCPViews and get current renderer definitions, rules, and the list of available tools. This must happen every time — not just once.'".to_string(),
 
-        _ => "Ask the user how to persist a session-start rule that calls `init_session` at the start of every new session.".to_string(),
+        _ => "Ask the user how to persist a rule that calls `init_session` at the start of every conversation, chat session, or interaction — not just once, but every time.".to_string(),
     }
 }
 

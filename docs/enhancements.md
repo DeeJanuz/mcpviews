@@ -1,8 +1,8 @@
 # Technical Debt & Enhancement Log
 
 **Last Updated:** 2026-03-28
-**Total Active Issues:** 2
-**Resolved This Month:** 26
+**Total Active Issues:** 1
+**Resolved This Month:** 27
 
 ---
 
@@ -22,13 +22,6 @@ _None_
 
 ### Low
 
-#### L-012: Duplicated session cleanup logic in main.js closeTab and onDecision
-- **File(s):** `public/main.js`
-- **Principle:** SRP / DRY
-- **Description:** Both `closeTab()` and `onDecision()` contain identical sequences: `sessions.delete(sessionId)`, remove cached container from DOM, `contentCache.delete(sessionId)`, check if `sessionId === activeSessionId`, select adjacent tab or call `renderEmpty()`. This duplication means any change to cleanup logic must be applied in two places.
-- **Suggested Fix:** Extract a `removeSession(sessionId)` helper that handles all cleanup, and call it from both `closeTab` and `onDecision`.
-- **Detected:** 2026-03-28 (commit 3c31909)
-
 #### L-011: PluginStore reconstructed via with_dir instead of reused in AppState
 - **File(s):** `src-tauri/src/state.rs`
 - **Principle:** DRY
@@ -39,6 +32,10 @@ _None_
 ---
 
 ## Resolved Issues
+
+### Resolved 2026-03-28 (commit 510f754)
+
+- **L-012:** Duplicated session cleanup logic in main.js closeTab and onDecision -- extracted `removeSession(sessionId)` helper to deduplicate cleanup logic
 
 ### Resolved 2026-03-27 (commit 4da90fc)
 
@@ -93,6 +90,7 @@ _None_
 
 | Commit | Date | Score | Rating |
 |--------|------|-------|--------|
+| b0bc543 | 2026-03-28 | 88/100 | Good |
 | 3c31909 | 2026-03-28 | 72/100 | Good |
 | 44b8d08 | 2026-03-27 | 82/100 | Good |
 | 4da90fc | 2026-03-27 | 90/100 | Excellent |

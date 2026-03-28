@@ -97,15 +97,18 @@ async fn build_instructions(state: &Arc<TokioMutex<AsyncAppState>>) -> String {
     instructions.push_str("\n## Complex Explanations → Companion Window\n\n");
     instructions.push_str(
         "Push complex explanations to the companion window instead of explaining \
-         them inline in chat. Call `init_session` at the start of every session to get \
-         renderer rules and plugin status.\n"
+         them inline in chat. Call `init_session` at the start of every conversation, \
+         chat session, or interaction to get renderer rules, plugin status, and the \
+         list of available tools.\n"
     );
 
     instructions.push_str("\n## Session Initialization\n\n");
     instructions.push_str(
-        "Call `init_session` at the start of every session to receive renderer definitions,\n\
-         behavioral rules, and plugin auth status. If this is your first time using MCPViews,\n\
-         call `mcpviews_setup` to configure automatic session initialization for your platform.\n"
+        "IMPORTANT: Call `init_session` at the start of every conversation, chat session, or \
+         interaction — not just once. This returns renderer definitions, behavioral rules, \
+         plugin auth status, and the list of available tools. If this is your first time using \
+         MCPViews, call `mcpviews_setup` to configure automatic session initialization for \
+         your platform.\n"
     );
 
     // Check for plugins needing authentication
