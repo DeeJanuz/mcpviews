@@ -357,6 +357,9 @@ Every renderer in your `renderers` map should have a corresponding entry in `ren
 | `tools` | No | For tool-scoped renderers: which unprefixed tool names produce output for this renderer. |
 | `data_hint` | **Yes** | JSON schema hint showing the expected shape of the `data` payload. This is what agents use to construct correct `push_content` calls. Without it, agents cannot format payloads. |
 | `rule` | No | Behavioral rule text returned by `init_session`/`mcpviews_setup` for agent persistence. |
+| `display_mode` | No | Preferred display mode when invoked by another renderer: `"drawer"` (slide-out panel, default), `"modal"`, or `"replace"`. |
+| `invoke_schema` | No | JSON schema hint for invocation parameters (e.g., `"{ id: string }"`). Setting this marks the renderer as invocable — it will appear in the frontend invocation registry and can be linked to via `mcpview://` URIs. |
+| `url_patterns` | No | Array of glob patterns for auto-detecting URLs in rendered content to convert to invocation links (e.g., `["/decisions/*", "/api/decisions/*"]`). Supports `*` (single segment) and `**` (any path). |
 
 **How auto-discovery and `renderer_definitions` interact:**
 
@@ -403,6 +406,9 @@ payloads for each renderer.
      `"{ results: [{ type: string, items: [{ name: string, path: string }] }] }"`
      Include all fields the renderer actually reads. Mark optional fields with `?`.
    - `rule`: optional — only include if there are non-obvious usage constraints
+   - `display_mode`: optional — `"drawer"`, `"modal"`, or `"replace"` (only if the renderer is invocable)
+   - `invoke_schema`: optional — JSON schema hint for invocation params (setting this makes the renderer invocable via `mcpview://` links)
+   - `url_patterns`: optional — glob patterns for auto-detecting URLs to convert to invocation links
 
 4. Add the `renderer_definitions` array to the manifest JSON.
 
@@ -443,6 +449,61 @@ Per-tool behavioral rules (tool names are auto-prefixed):
     "search_files": "Limit results to 50 items for performance."
   }
 }
+```
+
+## Cross-Renderer Invocation
+
+Renderers can link to other renderers using the `mcpview://` URI protocol. When a user clicks an invocation link, the target renderer opens in a stacking slide-out drawer panel.
+
+### mcpview:// Links in Markdown
+
+In any markdown content rendered by `rich_content`, use the `mcpview://` protocol:
+
+```markdown
+See [Decision Details](mcpview://decision_detail?id=dec-123)
+```
+
+This renders as a clickable button that opens the `decision_detail` renderer in a drawer with `{ id: "dec-123" }` as params.
+
+### Making a Renderer Invocable
+
+To make your renderer available for cross-renderer invocation, add `invoke_schema` to its `renderer_definitions` entry:
+
+```json
+{
+  "name": "decision_detail",
+  "description": "Decision detail view",
+  "scope": "universal",
+  "data_hint": "{ id: string, title?: string }",
+  "invoke_schema": "{ id: string }",
+  "display_mode": "drawer",
+  "url_patterns": ["/decisions/*"]
+}
+```
+
+- `invoke_schema` is required — only renderers with this field appear in the invocation registry
+- `display_mode` controls how the renderer opens: `"drawer"` (default), `"modal"`, or `"replace"`
+- `url_patterns` enable auto-detection: `<a>` tags in rendered content whose `href` matches a pattern are automatically converted to invocation buttons
+
+### URL Pattern Auto-Detection
+
+If your renderer defines `url_patterns`, the invocation registry scans rendered content for matching `<a>` links and converts them to invocation buttons. Patterns support `*` (any single path segment) and `**` (any path depth):
+
+```json
+"url_patterns": ["/decisions/*", "/api/v*/decisions/*"]
+```
+
+### Renderer Function Signature (Drawer Context)
+
+When invoked in a drawer, your renderer receives an additional `context` parameter:
+
+```javascript
+window.__renderers['my_renderer'] = function(container, data, meta, toolArgs, reviewRequired, onDecision, context) {
+  // context.mode = 'drawer' | 'modal' | 'replace'
+  // context.params = { id: 'dec-123', ... } from the mcpview:// URI
+  // context.level = drawer stack depth (0-based)
+  // context.invoke(rendererName, params) = open another renderer from within
+};
 ```
 
 ## Auto-Push Removed (Explicit Push Only)
@@ -556,7 +617,10 @@ A full-featured plugin manifest with all optional fields:
       "scope": "tool",
       "tools": ["custom_report"],
       "data_hint": "{ \"title\": \"string\", \"metrics\": [{\"name\": \"string\", \"value\": \"number\"}], \"body\": \"markdown\" }",
-      "rule": "Use push_content with tool_name 'acme_report' when displaying analysis reports."
+      "rule": "Use push_content with tool_name 'acme_report' when displaying analysis reports.",
+      "display_mode": "drawer",
+      "invoke_schema": "{ report_id: string }",
+      "url_patterns": ["/reports/*", "/api/reports/*"]
     }
   ],
   "tool_rules": {

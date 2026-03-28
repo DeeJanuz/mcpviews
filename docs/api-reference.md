@@ -289,6 +289,18 @@ const renderers = await invoke('get_plugin_renderers');
 // url format: plugin://localhost/{plugin_name}/renderers/{file_name}
 ```
 
+### `get_renderer_registry`
+
+Returns all invocable renderer definitions (those with `invoke_schema` set). Used by the frontend invocation registry to populate the cross-renderer linking system.
+
+```javascript
+const renderers = await invoke('get_renderer_registry');
+// Returns: RendererRegistryEntry[]
+// RendererRegistryEntry: { name, description, display_mode, invoke_schema, url_patterns, plugin }
+```
+
+Each entry includes the renderer's preferred `display_mode` ("drawer", "modal", or "replace"), the `invoke_schema` (JSON schema hint for invocation params), `url_patterns` (glob patterns for auto-detecting URLs), and the `plugin` name that provides it. Only renderers with `invoke_schema` set are included.
+
 ### `get_registry_sources`
 
 Get all configured registry sources.

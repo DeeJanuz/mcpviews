@@ -1,7 +1,7 @@
 # Technical Debt & Enhancement Log
 
 **Last Updated:** 2026-03-28
-**Total Active Issues:** 4
+**Total Active Issues:** 7
 **Resolved This Month:** 33
 
 ---
@@ -18,9 +18,28 @@ _None_
 
 ### Medium
 
-_None_
+#### M-018: No tests for drawer-stack, invocation-registry, or mcpview:// URI parsing
+- **File(s):** `public/renderers/drawer-stack.js`, `public/renderers/invocation-registry.js`, `public/renderers/shared.js`
+- **Principle:** Testability
+- **Description:** Three new frontend modules totaling ~250 lines were added with zero unit tests. The `globToRegex` function, mcpview:// URI parser, drawer stack open/close lifecycle, and `autoDetectLinks` DOM mutation are all testable. Pure functions like `globToRegex` and the URI parser can be extracted and tested directly.
+- **Suggested Fix:** Extract `globToRegex` and `parseMcpviewUri` into a utils module; add vitest tests covering glob matching, URI parsing edge cases, and drawer stack push/pop behavior.
+- **Detected:** 2026-03-28 (commit 21d2ff4)
+
+#### M-019: get_renderer_registry test duplicates filtering logic instead of calling the function
+- **File(s):** `src-tauri/src/commands.rs`
+- **Principle:** DRY / Testability
+- **Description:** The test for `get_renderer_registry` (line ~555) duplicates the entire filtering/json-building loop from the command function (line ~404) rather than calling the actual function through a helper. The test validates a copy of the logic, not the real implementation -- a bug in one may not appear in the other.
+- **Suggested Fix:** Extract the filtering logic into a standalone `fn collect_invocable_renderers(manifests: &[PluginManifest]) -> Vec<serde_json::Value>` and test that directly, or find a way to call `get_renderer_registry` with a mock State.
+- **Detected:** 2026-03-28 (commit 21d2ff4)
 
 ### Low
+
+#### L-017: display_mode is stringly-typed Option<String> instead of an enum
+- **File(s):** `shared/src/lib.rs`
+- **Principle:** OCP / Type Safety
+- **Description:** `display_mode: Option<String>` on `RendererDef` accepts any string, but the system only supports "drawer", "modal", and "replace". Invalid values silently fall through to a default. An enum would provide compile-time validation and exhaustive matching.
+- **Suggested Fix:** Define `enum DisplayMode { Drawer, Modal, Replace }` with `serde` rename attributes and use `Option<DisplayMode>` on the struct.
+- **Detected:** 2026-03-28 (commit 21d2ff4)
 
 #### L-014: Large inline documentation strings in builtin_renderer_definitions()
 - **File(s):** `src-tauri/src/mcp_tools.rs`
@@ -123,6 +142,7 @@ _None_
 
 | Commit | Date | Score | Rating |
 |--------|------|-------|--------|
+| 21d2ff4 | 2026-03-28 | 62/100 | Acceptable |
 | 9663b17 | 2026-03-28 | 90/100 | Excellent |
 | effec4a | 2026-03-28 | 62/100 | Acceptable |
 | 6a127b2 | 2026-03-28 | 72/100 | Good |
