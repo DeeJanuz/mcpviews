@@ -557,6 +557,14 @@ fn builtin_renderer_definitions() -> Vec<RendererDef> {
             data_hint: Some("{ \"title\": \"Optional heading\", \"body\": \"Markdown content\" }".into()),
             rule: Some("CALLER RESTRICTION: ONLY the main/coordinator agent may call push_content, push_review, and push_check. Sub-agents and background agents must NEVER call these tools — they return results to the coordinator, which decides what to push.\n\nWhen to push (main agent only):\n- Detailed explanations that benefit from structured formatting, diagrams, or tables\n- Plan summaries for human review\n- Architecture, data flows, system diagrams, API designs, database schemas\n- Implementation plans with structural decisions\n\nKeep your chat response concise (context, next steps, decisions needed). The detailed explanation with mermaid diagrams, tables, and formatted markdown goes to push_content.".into()),
         },
+        RendererDef {
+            name: "structured_data".into(),
+            description: "Tabular data with hierarchical rows, change tracking, sort/filter, and review mode with per-row/column accept/reject and cell editing.".into(),
+            scope: "universal".into(),
+            tools: vec![],
+            data_hint: Some(r#"{ "title": "Optional", "tables": [{ "id": "t1", "name": "Name", "columns": [{ "id": "c1", "name": "Col", "change": null|"add"|"delete" }], "rows": [{ "id": "r1", "cells": { "c1": { "value": "v", "change": null|"add"|"delete"|"update" } }, "children": [] }] }] }"#.into()),
+            rule: Some("Use structured_data for tabular/schema data. Supports nested rows via children arrays (arbitrary depth). In review mode (push_review), users can accept/reject individual rows and new columns, edit cells, then submit. For simple flat tables without change tracking, prefer rich_content with markdown tables.".into()),
+        },
     ]
 }
 
