@@ -410,9 +410,21 @@ Initialize MCPViews for the current session. Returns current renderer definition
       "message": "Plugin 'my-plugin' requires re-authentication..."
     }
   ],
-  "persistence_instructions": "Persist each rule as a memory file..."
+  "persistence_instructions": "Persist each rule as a memory file...",
+  "available_tools": [
+    {
+      "name": "push_content",
+      "description": "Display content in the MCPViews window."
+    },
+    {
+      "name": "push_review",
+      "description": "Display content and block until review."
+    }
+  ]
 }
 ```
+
+The `available_tools` array contains lightweight summaries (name and description only) of all MCP tools currently registered. This ensures the LLM knows what tools exist even on platforms with deferred tool loading that may not surface all tools via discovery.
 
 ### `mcpviews_setup`
 
@@ -429,7 +441,11 @@ One-time setup for MCPViews. Returns instructions for persisting a session-start
   "rules": [ ... ],
   "plugin_status": [ ... ],
   "persistence_instructions": "Persist each rule as a memory file...",
-  "setup_instructions": "Add a rule in `.claude/rules/mcpviews-init.md` containing: ..."
+  "setup_instructions": "Add a rule in `.claude/rules/mcpviews-init.md` containing: ...",
+  "available_tools": [
+    { "name": "push_content", "description": "Display content in the MCPViews window." },
+    { "name": "push_review", "description": "Display content and block until review." }
+  ]
 }
 ```
 
