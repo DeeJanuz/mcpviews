@@ -401,13 +401,10 @@ pub async fn save_file(
     }
 }
 
-/// Return renderer definitions that have invoke_schema set (i.e., are invocable).
-/// Used by the frontend invocation registry to know which renderers can be invoked.
-#[tauri::command]
-pub fn get_renderer_registry(state: State<'_, Arc<AppState>>) -> Vec<serde_json::Value> {
-    let registry = state.plugin_registry.lock().unwrap();
+/// Collect invocable renderer definitions (those with invoke_schema) from plugin manifests.
+pub fn collect_invocable_renderers(manifests: &[mcpviews_shared::PluginManifest]) -> Vec<serde_json::Value> {
     let mut results = Vec::new();
-    for manifest in &registry.manifests {
+    for manifest in manifests {
         for def in &manifest.renderer_definitions {
             if def.invoke_schema.is_some() {
                 results.push(serde_json::json!({
@@ -422,6 +419,14 @@ pub fn get_renderer_registry(state: State<'_, Arc<AppState>>) -> Vec<serde_json:
         }
     }
     results
+}
+
+/// Return renderer definitions that have invoke_schema set (i.e., are invocable).
+/// Used by the frontend invocation registry to know which renderers can be invoked.
+#[tauri::command]
+pub fn get_renderer_registry(state: State<'_, Arc<AppState>>) -> Vec<serde_json::Value> {
+    let registry = state.plugin_registry.lock().unwrap();
+    collect_invocable_renderers(&registry.manifests)
 }
 
 #[cfg(test)]
@@ -537,7 +542,7 @@ mod tests {
             tools: vec![],
             data_hint: None,
             rule: None,
-            display_mode: Some("drawer".to_string()),
+            display_mode: Some(mcpviews_shared::DisplayMode::Drawer),
             invoke_schema: Some("{ id: string }".to_string()),
             url_patterns: vec!["/decisions/*".to_string()],
         });
@@ -561,21 +566,7 @@ mod tests {
         }
 
         let registry = state.plugin_registry.lock().unwrap();
-        let mut results = Vec::new();
-        for manifest in &registry.manifests {
-            for def in &manifest.renderer_definitions {
-                if def.invoke_schema.is_some() {
-                    results.push(serde_json::json!({
-                        "name": def.name,
-                        "description": def.description,
-                        "display_mode": def.display_mode,
-                        "invoke_schema": def.invoke_schema,
-                        "url_patterns": def.url_patterns,
-                        "plugin": manifest.name,
-                    }));
-                }
-            }
-        }
+        let results = collect_invocable_renderers(&registry.manifests);
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0]["name"], "decision_detail");

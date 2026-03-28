@@ -1,6 +1,7 @@
 use crate::{plugins_dir, PluginManifest};
 use std::path::PathBuf;
 
+#[derive(Clone)]
 pub struct PluginStore {
     dir: PathBuf,
 }

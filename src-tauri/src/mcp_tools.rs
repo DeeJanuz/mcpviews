@@ -597,29 +597,9 @@ async fn proxy_plugin_tool_call(
 
 // ─── Renderer definitions ───
 
-fn builtin_renderer_definitions() -> Vec<RendererDef> {
-    vec![
-        RendererDef {
-            name: "rich_content".into(),
-            description: "Universal markdown display with mermaid diagrams, tables, code blocks, and citations. Use for any rich text content.".into(),
-            scope: "universal".into(),
-            tools: vec![],
-            data_hint: Some("{ \"title\": \"Optional heading\", \"body\": \"Markdown content\" }".into()),
-            rule: Some("CALLER RESTRICTION: ONLY the main/coordinator agent may call push_content, push_review, and push_check. Sub-agents and background agents must NEVER call these tools — they return results to the coordinator, which decides what to push.\n\nWhen to push (main agent only):\n- Detailed explanations that benefit from structured formatting, diagrams, or tables\n- Plan summaries for human review\n- Architecture, data flows, system diagrams, API designs, database schemas\n- Implementation plans with structural decisions\n\nKeep your chat response concise (context, next steps, decisions needed). The detailed explanation with mermaid diagrams, tables, and formatted markdown goes to push_content.".into()),
-            display_mode: None,
-            invoke_schema: None,
-            url_patterns: vec![],
-        },
-        RendererDef {
-            name: "structured_data".into(),
-            description: "Tabular data with hierarchical rows, change tracking, sort/filter, and review mode with per-row/column accept/reject and cell editing.".into(),
-            scope: "universal".into(),
-            tools: vec![],
-            data_hint: Some(r#"{ "title": "Optional", "tables": [{ "id": "t1", "name": "Name", "columns": [{ "id": "c1", "name": "Col", "change": null|"add"|"delete" }], "rows": [{ "id": "r1", "cells": { "c1": { "value": "v", "change": null|"add"|"delete"|"update" } }, "children": [] }] }] }"#.into()),
-            display_mode: None,
-            invoke_schema: None,
-            url_patterns: vec![],
-            rule: Some(r#"Use structured_data when presenting tabular or schema data that benefits from sort, filter, expand/collapse, or review workflows. Prefer it over rich_content markdown tables when:
+const RICH_CONTENT_RULE: &str = "CALLER RESTRICTION: ONLY the main/coordinator agent may call push_content, push_review, and push_check. Sub-agents and background agents must NEVER call these tools — they return results to the coordinator, which decides what to push.\n\nWhen to push (main agent only):\n- Detailed explanations that benefit from structured formatting, diagrams, or tables\n- Plan summaries for human review\n- Architecture, data flows, system diagrams, API designs, database schemas\n- Implementation plans with structural decisions\n\nKeep your chat response concise (context, next steps, decisions needed). The detailed explanation with mermaid diagrams, tables, and formatted markdown goes to push_content.";
+
+const STRUCTURED_DATA_RULE: &str = r#"Use structured_data when presenting tabular or schema data that benefits from sort, filter, expand/collapse, or review workflows. Prefer it over rich_content markdown tables when:
 - Data has hierarchical/nested rows (parent-child relationships)
 - Users need to sort or filter interactively
 - Data represents proposed changes that need accept/reject review
@@ -715,7 +695,31 @@ push_review response contains user decisions:
 - `tables[]`: Array of table objects, each with `id`, `name`, `columns[]`, `rows[]`
 - `columns[]`: `{ id, name, change }` — change is null for read-only, "add"/"delete" for review
 - `rows[]`: `{ id, cells, children }` — cells is `{ [colId]: { value, change } }`, children enables arbitrary nesting
-- Nested rows auto-expand to depth 2; deeper rows start collapsed"#.into()),
+- Nested rows auto-expand to depth 2; deeper rows start collapsed"#;
+
+fn builtin_renderer_definitions() -> Vec<RendererDef> {
+    vec![
+        RendererDef {
+            name: "rich_content".into(),
+            description: "Universal markdown display with mermaid diagrams, tables, code blocks, and citations. Use for any rich text content.".into(),
+            scope: "universal".into(),
+            tools: vec![],
+            data_hint: Some("{ \"title\": \"Optional heading\", \"body\": \"Markdown content\" }".into()),
+            rule: Some(RICH_CONTENT_RULE.into()),
+            display_mode: None,
+            invoke_schema: None,
+            url_patterns: vec![],
+        },
+        RendererDef {
+            name: "structured_data".into(),
+            description: "Tabular data with hierarchical rows, change tracking, sort/filter, and review mode with per-row/column accept/reject and cell editing.".into(),
+            scope: "universal".into(),
+            tools: vec![],
+            data_hint: Some(r#"{ "title": "Optional", "tables": [{ "id": "t1", "name": "Name", "columns": [{ "id": "c1", "name": "Col", "change": null|"add"|"delete" }], "rows": [{ "id": "r1", "cells": { "c1": { "value": "v", "change": null|"add"|"delete"|"update" } }, "children": [] }] }] }"#.into()),
+            display_mode: None,
+            invoke_schema: None,
+            url_patterns: vec![],
+            rule: Some(STRUCTURED_DATA_RULE.into()),
         },
     ]
 }
@@ -816,6 +820,14 @@ pub fn available_renderers(state: &std::sync::Arc<crate::state::AppState>) -> Ve
 
 // ─── Tool definitions ───
 
+fn build_data_description(renderers: &[RendererDef], prefix: &str) -> String {
+    let hints = renderers.iter()
+        .filter_map(|r| r.data_hint.as_ref().map(|h| format!("For {}: {}", r.name, h)))
+        .collect::<Vec<_>>()
+        .join(". ");
+    format!("{} {}", prefix, hints)
+}
+
 fn builtin_tool_definitions(renderers: &[RendererDef]) -> Vec<Value> {
     let renderer_names: Vec<String> = renderers.iter().map(|r| r.name.clone()).collect();
     let renderer_list = if renderer_names.is_empty() {
@@ -837,13 +849,7 @@ fn builtin_tool_definitions(renderers: &[RendererDef]) -> Vec<Value> {
                     },
                     "data": {
                         "type": "object",
-                        "description": format!(
-                            "Content payload — shape depends on tool_name. {}",
-                            renderers.iter()
-                                .filter_map(|r| r.data_hint.as_ref().map(|h| format!("For {}: {}", r.name, h)))
-                                .collect::<Vec<_>>()
-                                .join(". ")
-                        )
+                        "description": build_data_description(renderers, "Content payload — shape depends on tool_name.")
                     },
                     "meta": {
                         "type": "object",
@@ -865,13 +871,7 @@ fn builtin_tool_definitions(renderers: &[RendererDef]) -> Vec<Value> {
                     },
                     "data": {
                         "type": "object",
-                        "description": format!(
-                            "Content payload for review display — shape depends on tool_name. {}",
-                            renderers.iter()
-                                .filter_map(|r| r.data_hint.as_ref().map(|h| format!("For {}: {}", r.name, h)))
-                                .collect::<Vec<_>>()
-                                .join(". ")
-                        )
+                        "description": build_data_description(renderers, "Content payload for review display — shape depends on tool_name.")
                     },
                     "meta": {
                         "type": "object",
@@ -956,8 +956,8 @@ mod tests {
     fn test_collect_rules_includes_renderer_selection() {
         let rules = collect_rules(&[], &[]);
         assert_eq!(rules.len(), 1);
-        assert_eq!(rules[0]["name"], "renderer_selection");
-        assert_eq!(rules[0]["category"], "system");
+        let sel = rules.iter().find(|r| r["name"] == "renderer_selection").expect("renderer_selection rule should exist");
+        assert_eq!(sel["category"], "system");
     }
 
     #[test]
@@ -975,18 +975,17 @@ mod tests {
         }];
         let rules = collect_rules(&renderers, &[]);
         assert_eq!(rules.len(), 2);
-        // First rule is renderer_selection
-        assert_eq!(rules[0]["name"], "renderer_selection");
-        // Second is the renderer rule
-        assert_eq!(rules[1]["name"], "rich_content_usage");
-        assert_eq!(rules[1]["category"], "renderer");
-        assert_eq!(rules[1]["source"], "built-in");
-        assert_eq!(rules[1]["renderer"], "rich_content");
-        assert_eq!(rules[1]["rule"], "Always use rich_content for plans.");
-        // New fields: description, scope, data_hint always present
-        assert_eq!(rules[1]["description"], "Universal markdown display");
-        assert_eq!(rules[1]["scope"], "universal");
-        assert_eq!(rules[1]["data_hint"], r#"{ "title": "heading", "body": "markdown" }"#);
+        let sel = rules.iter().find(|r| r["name"] == "renderer_selection").expect("renderer_selection rule should exist");
+        assert_eq!(sel["category"], "system");
+
+        let rc = rules.iter().find(|r| r["name"] == "rich_content_usage").expect("rich_content_usage rule should exist");
+        assert_eq!(rc["category"], "renderer");
+        assert_eq!(rc["source"], "built-in");
+        assert_eq!(rc["renderer"], "rich_content");
+        assert_eq!(rc["rule"], "Always use rich_content for plans.");
+        assert_eq!(rc["description"], "Universal markdown display");
+        assert_eq!(rc["scope"], "universal");
+        assert_eq!(rc["data_hint"], r#"{ "title": "heading", "body": "markdown" }"#);
     }
 
     #[test]
@@ -1005,7 +1004,8 @@ mod tests {
         let rules = collect_rules(&renderers, &[]);
         // Only the renderer_selection rule, no renderer-specific rule
         assert_eq!(rules.len(), 1);
-        assert_eq!(rules[0]["name"], "renderer_selection");
+        let sel = rules.iter().find(|r| r["name"] == "renderer_selection").expect("renderer_selection rule should exist");
+        assert_eq!(sel["category"], "system");
     }
 
     #[test]
@@ -1023,11 +1023,10 @@ mod tests {
         }];
         let rules = collect_rules(&renderers, &[]);
         assert_eq!(rules.len(), 2);
-        // tool-scoped renderer with rule → source is "plugin" (index 1, after renderer_selection)
-        assert_eq!(rules[1]["source"], "plugin");
-        assert_eq!(rules[1]["renderer"], "custom_view");
-        assert_eq!(rules[1]["description"], "Custom");
-        assert_eq!(rules[1]["scope"], "tool");
+        let cv = rules.iter().find(|r| r["renderer"] == "custom_view").expect("custom_view rule should exist");
+        assert_eq!(cv["source"], "plugin");
+        assert_eq!(cv["description"], "Custom");
+        assert_eq!(cv["scope"], "tool");
     }
 
     #[test]
@@ -1045,14 +1044,13 @@ mod tests {
         }];
         let rules = collect_rules(&renderers, &[]);
         assert_eq!(rules.len(), 2);
-        // Index 1 after renderer_selection
-        assert_eq!(rules[1]["category"], "renderer");
-        assert_eq!(rules[1]["source"], "plugin");
-        assert_eq!(rules[1]["renderer"], "search_results");
-        assert_eq!(rules[1]["tools"][0], "search_codebase");
-        assert_eq!(rules[1]["scope"], "tool");
-        assert_eq!(rules[1]["description"], "Renders search output");
-        assert_eq!(rules[1]["data_hint"], "Pass search results");
+        let sr = rules.iter().find(|r| r["renderer"] == "search_results").expect("search_results rule should exist");
+        assert_eq!(sr["category"], "renderer");
+        assert_eq!(sr["source"], "plugin");
+        assert_eq!(sr["tools"][0], "search_codebase");
+        assert_eq!(sr["scope"], "tool");
+        assert_eq!(sr["description"], "Renders search output");
+        assert_eq!(sr["data_hint"], "Pass search results");
     }
 
     #[test]
@@ -1071,11 +1069,10 @@ mod tests {
         );
         let rules = collect_rules(&[], &[manifest]);
         assert_eq!(rules.len(), 2);
-        // Index 1 after renderer_selection
-        assert_eq!(rules[1]["name"], "sp__search_usage");
-        assert_eq!(rules[1]["category"], "tool");
-        assert_eq!(rules[1]["tool"], "sp__search");
-        assert_eq!(rules[1]["source"], "search-plugin");
+        let tr = rules.iter().find(|r| r["name"] == "sp__search_usage").expect("sp__search_usage rule should exist");
+        assert_eq!(tr["category"], "tool");
+        assert_eq!(tr["tool"], "sp__search");
+        assert_eq!(tr["source"], "search-plugin");
     }
 
     #[test]
@@ -1094,8 +1091,8 @@ mod tests {
         );
         let rules = collect_rules(&[], &[manifest]);
         assert_eq!(rules.len(), 2);
-        // Index 1 after renderer_selection
-        assert_eq!(rules[1]["tool"], "do_thing");
+        let tr = rules.iter().find(|r| r["tool"] == "do_thing").expect("do_thing rule should exist");
+        assert_eq!(tr["name"], "do_thing_usage");
     }
 
     // ─── collect_plugin_auth_status tests ───

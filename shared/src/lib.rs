@@ -9,6 +9,14 @@ use std::collections::HashMap;
 use std::fmt;
 use std::path::PathBuf;
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum DisplayMode {
+    Drawer,
+    Modal,
+    Replace,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RendererDef {
     /// Renderer key used in content_type (e.g., "analysis_stats")
@@ -28,7 +36,7 @@ pub struct RendererDef {
     pub rule: Option<String>,
     /// Preferred display mode when invoked: "drawer", "modal", or "replace"
     #[serde(default)]
-    pub display_mode: Option<String>,
+    pub display_mode: Option<DisplayMode>,
     /// JSON schema hint for invocation params (e.g., "{ id: string }")
     #[serde(default)]
     pub invoke_schema: Option<String>,
@@ -570,7 +578,7 @@ mod tests {
             "url_patterns": ["/decisions/*", "/api/decisions/*"]
         }"#;
         let parsed: RendererDef = serde_json::from_str(json).unwrap();
-        assert_eq!(parsed.display_mode, Some("drawer".to_string()));
+        assert_eq!(parsed.display_mode, Some(DisplayMode::Drawer));
         assert_eq!(parsed.invoke_schema, Some("{ id: string }".to_string()));
         assert_eq!(parsed.url_patterns, vec!["/decisions/*", "/api/decisions/*"]);
     }
@@ -614,6 +622,24 @@ mod tests {
         }"#;
         let manifest: PluginManifest = serde_json::from_str(json).unwrap();
         assert!(manifest.no_auto_push.is_empty());
+    }
+
+    #[test]
+    fn test_display_mode_serde() {
+        let json = r#""drawer""#;
+        let mode: DisplayMode = serde_json::from_str(json).unwrap();
+        assert_eq!(mode, DisplayMode::Drawer);
+
+        let json = r#""modal""#;
+        let mode: DisplayMode = serde_json::from_str(json).unwrap();
+        assert_eq!(mode, DisplayMode::Modal);
+
+        let json = r#""replace""#;
+        let mode: DisplayMode = serde_json::from_str(json).unwrap();
+        assert_eq!(mode, DisplayMode::Replace);
+
+        // Roundtrip
+        assert_eq!(serde_json::to_string(&DisplayMode::Drawer).unwrap(), r#""drawer""#);
     }
 
     #[test]

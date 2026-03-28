@@ -32,9 +32,7 @@ impl AppState {
 
     /// Create an AppState with a custom PluginStore (useful for testing without touching the real filesystem).
     pub fn new_with_store(store: PluginStore) -> Self {
-        let registry = PluginRegistry::load_plugins_with_store(
-            PluginStore::with_dir(store.dir().to_path_buf()),
-        );
+        let registry = PluginRegistry::load_plugins_with_store(store.clone());
         Self {
             sessions: Mutex::new(SessionStore::new()),
             reviews: Mutex::new(ReviewState::new()),
@@ -61,7 +59,7 @@ impl AppState {
     /// Reload all plugins from disk and broadcast a tools/list_changed notification
     /// to all connected MCP SSE sessions.
     pub fn reload_plugins(&self) {
-        let store = PluginStore::with_dir(self.plugin_store.dir().to_path_buf());
+        let store = self.plugin_store.clone();
         let new_registry = PluginRegistry::load_plugins_with_store(store);
         {
             let mut registry = self.plugin_registry.lock().unwrap();
