@@ -11,15 +11,7 @@
   },
   "app": {
     "withGlobalTauri": true,
-    "windows": [
-      {
-        "title": "MCPViews",
-        "width": 1200,
-        "height": 800,
-        "resizable": true,
-        "fullscreen": false
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net plugin://localhost; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com plugin://localhost; font-src 'self' https://fonts.gstatic.com plugin://localhost; connect-src 'self' http://localhost:4200; img-src 'self' data: blob: plugin://localhost"
     }

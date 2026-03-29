@@ -78,6 +78,21 @@ impl AppState {
         Ok(plugin_name)
     }
 
+    /// Returns deduplicated origins (scheme + authority) from all installed plugin MCP URLs.
+    pub fn plugin_csp_origins(&self) -> Vec<String> {
+        let registry = self.plugin_registry.lock().unwrap();
+        let mut origins = std::collections::HashSet::new();
+        for manifest in &registry.manifests {
+            if let Some(ref mcp) = manifest.mcp {
+                if let Ok(url) = url::Url::parse(&mcp.url) {
+                    let origin = format!("{}://{}", url.scheme(), url.authority());
+                    origins.insert(origin);
+                }
+            }
+        }
+        origins.into_iter().collect()
+    }
+
     /// Reload all plugins from disk and broadcast a tools/list_changed notification
     /// to all connected MCP SSE sessions.
     pub fn reload_plugins(&self) {
@@ -108,6 +123,59 @@ mod tests {
         let (state, _dir) = test_app_state();
         // Should not panic even with no connected MCP sessions
         state.notify_tools_changed();
+    }
+
+    #[test]
+    fn test_plugin_csp_origins_empty() {
+        let (state, _dir) = test_app_state();
+        let origins = state.plugin_csp_origins();
+        assert!(origins.is_empty());
+    }
+
+    #[test]
+    fn test_plugin_csp_origins_with_mcp() {
+        let (state, _dir) = test_app_state();
+        let mut manifest = test_manifest("test-plugin");
+        manifest.mcp = Some(mcpviews_shared::PluginMcpConfig {
+            url: "https://api.example.com/v1/mcp".to_string(),
+            auth: None,
+            tool_prefix: "test".to_string(),
+        });
+        state.install_plugin_from_manifest(manifest).unwrap();
+        let origins = state.plugin_csp_origins();
+        assert_eq!(origins.len(), 1);
+        assert!(origins.contains(&"https://api.example.com".to_string()));
+    }
+
+    #[test]
+    fn test_plugin_csp_origins_no_mcp() {
+        let (state, _dir) = test_app_state();
+        let manifest = test_manifest("no-mcp-plugin");
+        state.install_plugin_from_manifest(manifest).unwrap();
+        let origins = state.plugin_csp_origins();
+        assert!(origins.is_empty());
+    }
+
+    #[test]
+    fn test_plugin_csp_origins_deduplicates() {
+        let (state, _dir) = test_app_state();
+        let mut m1 = test_manifest("plugin-a");
+        m1.mcp = Some(mcpviews_shared::PluginMcpConfig {
+            url: "https://api.example.com/v1/mcp".to_string(),
+            auth: None,
+            tool_prefix: "a".to_string(),
+        });
+        let mut m2 = test_manifest("plugin-b");
+        m2.mcp = Some(mcpviews_shared::PluginMcpConfig {
+            url: "https://api.example.com/v2/other".to_string(),
+            auth: None,
+            tool_prefix: "b".to_string(),
+        });
+        state.install_plugin_from_manifest(m1).unwrap();
+        state.install_plugin_from_manifest(m2).unwrap();
+        let origins = state.plugin_csp_origins();
+        assert_eq!(origins.len(), 1);
+        assert!(origins.contains(&"https://api.example.com".to_string()));
     }
 
     #[test]

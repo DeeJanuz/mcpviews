@@ -24,9 +24,23 @@ use tauri::{
     image::Image,
     menu::{MenuBuilder, MenuItemBuilder},
     tray::TrayIconBuilder,
+    Listener,
     Manager,
 };
 use tauri_plugin_autostart::MacosLauncher;
+
+const BASE_CSP: &str = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net plugin://localhost; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com plugin://localhost; font-src 'self' https://fonts.gstatic.com plugin://localhost; connect-src 'self' http://localhost:4200; img-src 'self' data: blob: plugin://localhost";
+
+fn build_csp(extra_origins: &[String]) -> String {
+    if extra_origins.is_empty() {
+        return BASE_CSP.to_string();
+    }
+    let suffix = extra_origins.join(" ");
+    BASE_CSP.replace(
+        "connect-src 'self' http://localhost:4200",
+        &format!("connect-src 'self' http://localhost:4200 {}", suffix),
+    )
+}
 
 fn mime_from_extension(path: &std::path::Path) -> &'static str {
     match path.extension().and_then(|e| e.to_str()) {
@@ -155,6 +169,30 @@ fn main() {
                 })
                 .expect("Failed to spawn HTTP thread");
 
+            // Create main window programmatically with dynamic CSP
+            let csp_state = app_state.clone();
+            tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("index.html".into()))
+                .title("MCPViews")
+                .inner_size(1200.0, 800.0)
+                .resizable(true)
+                .on_web_resource_request(move |_req, resp| {
+                    let origins = csp_state.plugin_csp_origins();
+                    let csp = build_csp(&origins);
+                    resp.headers_mut().insert(
+                        "content-security-policy",
+                        csp.parse().unwrap(),
+                    );
+                })
+                .build()?;
+
+            // Listen for reload_renderers to refresh main window CSP
+            let reload_handle = app.handle().clone();
+            app.listen("reload_renderers", move |_| {
+                if let Some(window) = reload_handle.get_webview_window("main") {
+                    let _ = window.eval("window.location.reload()");
+                }
+            });
+
             // Build system tray menu
             let show_item = MenuItemBuilder::with_id("show", "Show Window").build(app)?;
             let manage_plugins_item = MenuItemBuilder::with_id("manage_plugins", "Manage Plugins").build(app)?;
@@ -189,6 +227,8 @@ fn main() {
                             let _ = window.show();
                             let _ = window.set_focus();
                         } else {
+                            let state: tauri::State<'_, Arc<AppState>> = app.state();
+                            let csp_state = state.inner().clone();
                             let _ = tauri::WebviewWindowBuilder::new(
                                 app,
                                 "plugin-manager",
@@ -196,6 +236,14 @@ fn main() {
                             )
                             .title("MCPViews - Plugin Manager")
                             .inner_size(800.0, 600.0)
+                            .on_web_resource_request(move |_req, resp| {
+                                let origins = csp_state.plugin_csp_origins();
+                                let csp = build_csp(&origins);
+                                resp.headers_mut().insert(
+                                    "content-security-policy",
+                                    csp.parse().unwrap(),
+                                );
+                            })
                             .build();
                         }
                     }
@@ -222,4 +270,35 @@ fn main() {
         })
         .run(tauri::generate_context!())
         .expect("error while running MCPViews");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_csp_no_extras() {
+        let csp = build_csp(&[]);
+        assert_eq!(csp, BASE_CSP);
+    }
+
+    #[test]
+    fn test_build_csp_with_origins() {
+        let origins = vec![
+            "https://api.example.com".to_string(),
+            "https://other.io".to_string(),
+        ];
+        let csp = build_csp(&origins);
+        assert!(csp.contains("connect-src 'self' http://localhost:4200 https://api.example.com https://other.io"));
+    }
+
+    #[test]
+    fn test_build_csp_preserves_other_directives() {
+        let origins = vec!["https://api.example.com".to_string()];
+        let csp = build_csp(&origins);
+        assert!(csp.contains("default-src 'self'"));
+        assert!(csp.contains("script-src 'self' 'unsafe-inline' 'unsafe-eval'"));
+        assert!(csp.contains("font-src 'self' https://fonts.gstatic.com"));
+        assert!(csp.contains("img-src 'self' data: blob:"));
+    }
 }
