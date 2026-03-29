@@ -506,6 +506,12 @@ window.__renderers['my_renderer'] = function(container, data, meta, toolArgs, re
 };
 ```
 
+## CSP and Plugin API Access
+
+MCPViews dynamically builds the Content Security Policy `connect-src` directive to include the origins of all installed plugin MCP URLs. This means custom renderers bundled with your plugin can use `fetch()` to call your plugin's API directly from the browser without being blocked by CSP.
+
+When a new plugin is installed, MCPViews reloads the webview so the updated CSP takes effect immediately. No plugin configuration is needed -- the origin is extracted automatically from the `mcp.url` field in your manifest. For example, if your manifest has `"url": "https://api.example.com/mcp"`, then `https://api.example.com` is added to `connect-src`.
+
 ## Auto-Push Removed (Explicit Push Only)
 
 Plugin tool results are no longer auto-pushed to the companion window. Content only appears when the coordinator agent explicitly calls `push_content` or `push_review`. This prevents sub-agent research calls from flooding the UI with unwanted content.

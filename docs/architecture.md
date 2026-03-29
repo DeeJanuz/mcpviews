@@ -42,12 +42,12 @@ MCP Agent → POST localhost:4200/api/push
 
 | File | Responsibility |
 |------|---------------|
-| `main.rs` | Tauri entry point, plugin setup (shell, autostart), system tray, window event handling (hide-to-tray on close) |
+| `main.rs` | Tauri entry point, plugin setup (shell, autostart), system tray, window event handling (hide-to-tray on close). Main window is created programmatically (not declaratively via `tauri.conf.json`) so that `on_web_resource_request` hooks can inject a dynamic CSP header. `build_csp(extra_origins)` appends plugin MCP origins to the `connect-src` directive so plugin renderers can `fetch()` their plugin's API without CSP violations. Listens for `reload_renderers` event to reload the main webview when new plugins are installed, picking up new CSP origins. Includes 3 unit tests for `build_csp` covering empty origins, multiple origins, and directive preservation |
 | `http_server.rs` | axum HTTP server on `:4200`. Routes: `GET /health`, `POST /api/push`, `POST /api/reload-plugins`, and MCP Streamable HTTP on `/mcp` (GET for SSE, POST for JSON-RPC, DELETE for session teardown). Runs on a dedicated thread with its own tokio runtime to avoid blocking the GTK event loop. `resolve_content_type(registry, tool_name)` maps tool names to renderer names through plugin manifest renderer maps, falling back to the raw tool name if no mapping exists. Includes 4 unit tests covering single-plugin, multi-plugin, fallback, and no-match scenarios |
 | `session.rs` | `SessionStore` — in-memory `HashMap<String, PreviewSession>` with 30-minute TTL and 60s GC interval. `PreviewSession` includes optional `timeout_secs` field for review countdown display |
 | `review.rs` | `ReviewState` — pending review management via `tokio::oneshot` channels. `add_pending()` returns a receiver; `resolve()` or `dismiss()` sends the decision |
 | `commands.rs` | Tauri IPC commands: `get_sessions`, `submit_decision`, `dismiss_session`, `get_health`, `save_file` (native save dialog for file export), `get_renderer_registry` (returns invocable renderer metadata for frontend invocation registry), plus plugin management commands (`list_plugins`, `install_plugin`, `uninstall_plugin`, `install_plugin_from_file`, `install_plugin_from_registry`, `install_plugin_from_zip`, `fetch_registry`, `start_plugin_auth`, `store_plugin_token`, `update_plugin`, `get_plugin_renderers`) and settings/registry commands (`get_settings`, `save_settings`, `get_registry_sources`, `add_registry_source`, `remove_registry_source`, `toggle_registry_source`) |
-| `state.rs` | `AppState` — shared state containing `Mutex<SessionStore>`, `Mutex<ReviewState>`, `Mutex<PluginRegistry>`, `Mutex<McpSessionManager>`, `Mutex<Vec<RegistryEntry>>` (cached registry), and `reqwest::Client`. Provides `reload_plugins()` for full disk reload, `notify_tools_changed()` for broadcasting `notifications/tools/list_changed` to all SSE sessions, `plugins_dir()` accessor delegating to `PluginStore::dir()`, and `install_plugin_from_manifest(manifest)` for upsert-style plugin registration (removes existing plugin with same name, then adds). `new_with_store(store)` constructor accepts a custom `PluginStore` for testable construction with temp directories (avoids touching the real filesystem). All plugin install/uninstall/update commands now call `notify_tools_changed()` so connected MCP clients are notified immediately |
+| `state.rs` | `AppState` — shared state containing `Mutex<SessionStore>`, `Mutex<ReviewState>`, `Mutex<PluginRegistry>`, `Mutex<McpSessionManager>`, `Mutex<Vec<RegistryEntry>>` (cached registry), and `reqwest::Client`. Provides `reload_plugins()` for full disk reload, `notify_tools_changed()` for broadcasting `notifications/tools/list_changed` to all SSE sessions, `plugins_dir()` accessor delegating to `PluginStore::dir()`, `install_plugin_from_manifest(manifest)` for upsert-style plugin registration (removes existing plugin with same name, then adds), and `plugin_csp_origins()` which returns deduplicated origins (scheme + authority) from all installed plugin MCP URLs for dynamic CSP injection. `new_with_store(store)` constructor accepts a custom `PluginStore` for testable construction with temp directories (avoids touching the real filesystem). All plugin install/uninstall/update commands now call `notify_tools_changed()` so connected MCP clients are notified immediately |
 | `mcp_session.rs` | `McpSessionManager` — manages MCP Streamable HTTP SSE sessions with `tokio::broadcast` channels. Supports session creation, teardown, broadcast to all sessions, and GC of sessions with no active receivers |
 | `installer.rs` | Agent integration installer — first-run detection, bundled script resolution, and terminal spawning for setup scripts (Linux/macOS/Windows) |
 | `renderer_scanner.rs` | Scans installed plugin directories for custom renderer JS files in `{plugin_dir}/renderers/*.js`, returning `RendererInfo` structs with `plugin://` protocol URLs |
@@ -121,12 +121,14 @@ For `reviewRequired: true` pushes, the HTTP handler:
 5. The HTTP response is sent back to the MCP agent
 
 ### Window Management
+- Main window created programmatically via `WebviewWindowBuilder` (not declaratively in `tauri.conf.json`) to support dynamic CSP injection via `on_web_resource_request` hooks
 - Close → hide to tray (not quit)
 - Tray click → show + focus main window
 - Push event → show + focus main window (automatic)
 - Tray menu → "Show Window" / "Manage Plugins" / "Setup Agent Integrations" / "Quit"
-- "Manage Plugins" opens a separate Plugin Manager window (`plugin-manager.html`, 800x600)
+- "Manage Plugins" opens a separate Plugin Manager window (`plugin-manager.html`, 800x600), also with dynamic CSP hooks
 - Custom `plugin://` URI scheme serves plugin renderer assets from `~/.mcpviews/plugins/{name}/` with path traversal protection and MIME type detection
+- On plugin install, `reload_renderers` event triggers a webview reload so the main window picks up new CSP origins
 
 ## MCP Streamable HTTP Transport
 
