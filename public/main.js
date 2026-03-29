@@ -238,7 +238,10 @@
       handlePush(session);
     });
 
-    // Load any existing sessions on startup
+    // Load plugin renderers before rendering any sessions
+    await loadPluginRenderers();
+
+    // Load any existing sessions on startup (after renderers are ready)
     try {
       const existingSessions = await invoke('get_sessions');
       if (existingSessions && existingSessions.length > 0) {
@@ -249,9 +252,6 @@
     } catch (e) {
       console.error('Failed to load existing sessions:', e);
     }
-
-    // Load plugin renderers after initial sessions are loaded
-    await loadPluginRenderers();
 
     // Populate invocation registry
     if (window.__companionUtils && window.__companionUtils.populateRendererRegistry) {
@@ -275,19 +275,26 @@
     if (!window.__TAURI__) return;
     try {
       var renderers = await window.__TAURI__.core.invoke('get_plugin_renderers');
+      var loadPromises = [];
       renderers.forEach(function (renderer) {
         // Check if already loaded
         var existing = document.querySelector('script[data-plugin-renderer="' + renderer.plugin_name + '/' + renderer.file_name + '"]');
         if (existing) return;
 
-        var script = document.createElement('script');
-        script.src = renderer.url;
-        script.setAttribute('data-plugin-renderer', renderer.plugin_name + '/' + renderer.file_name);
-        script.onerror = function () {
-          console.error('[mcpviews] Failed to load plugin renderer:', renderer.url);
-        };
-        document.head.appendChild(script);
+        var promise = new Promise(function (resolve) {
+          var script = document.createElement('script');
+          script.src = renderer.url;
+          script.setAttribute('data-plugin-renderer', renderer.plugin_name + '/' + renderer.file_name);
+          script.onload = resolve;
+          script.onerror = function () {
+            console.error('[mcpviews] Failed to load plugin renderer:', renderer.url);
+            resolve(); // resolve anyway so other renderers aren't blocked
+          };
+          document.head.appendChild(script);
+        });
+        loadPromises.push(promise);
       });
+      await Promise.all(loadPromises);
     } catch (e) {
       console.error('[mcpviews] Failed to load plugin renderers:', e);
     }

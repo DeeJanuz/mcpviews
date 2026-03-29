@@ -3,6 +3,8 @@ use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::Mutex as TokioMutex;
 
+use tauri::Emitter;
+
 use crate::http_server::{execute_push, AsyncAppState, ExecutePushResult};
 use crate::plugin::{PluginRegistry, PluginToolResult, try_refresh_oauth};
 
@@ -61,6 +63,7 @@ pub async fn call_tool(
         "push_check" => call_push_check(arguments, state).await,
         "init_session" => call_init_session(arguments, state).await,
         "mcpviews_setup" => call_mcpviews_setup(arguments, state).await,
+        "mcpviews_install_plugin" => call_install_plugin(arguments, state).await,
         _ => {
             // Check plugin tools — scope MutexGuard to block before any .await
             let (plugin_info, client) = lookup_plugin_tool(name, state).await;
@@ -818,6 +821,58 @@ pub fn available_renderers(state: &std::sync::Arc<crate::state::AppState>) -> Ve
     renderers
 }
 
+async fn call_install_plugin(
+    arguments: Value,
+    state: &Arc<TokioMutex<AsyncAppState>>,
+) -> Result<Value, String> {
+    let manifest_json = arguments
+        .get("manifest_json")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing required parameter: manifest_json")?;
+
+    let download_url = arguments
+        .get("download_url")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let manifest = if let Some(url) = &download_url {
+        let client = {
+            let state_guard = state.lock().await;
+            state_guard.inner.http_client.clone()
+        };
+        let plugins_dir = mcpviews_shared::plugins_dir();
+        mcpviews_shared::package::download_and_install_plugin(&client, url, &plugins_dir).await?
+    } else {
+        serde_json::from_str::<mcpviews_shared::PluginManifest>(manifest_json)
+            .map_err(|e| format!("Invalid manifest JSON: {}", e))?
+    };
+
+    let plugin_name = manifest.name.clone();
+
+    {
+        let state_guard = state.lock().await;
+        let mut registry = state_guard.inner.plugin_registry.lock().unwrap();
+        if registry.manifests.iter().any(|m| m.name == plugin_name) {
+            let _ = registry.remove_plugin(&plugin_name);
+        }
+        registry.add_plugin(manifest)?;
+    }
+
+    // Notify MCP clients and GUI
+    {
+        let state_guard = state.lock().await;
+        state_guard.inner.notify_tools_changed();
+        let _ = state_guard.app_handle.emit("reload_renderers", ());
+    }
+
+    Ok(serde_json::json!({
+        "content": [{
+            "type": "text",
+            "text": format!("Plugin '{}' installed successfully.", plugin_name)
+        }]
+    }))
+}
+
 // ─── Tool definitions ───
 
 fn build_data_description(renderers: &[RendererDef], prefix: &str) -> String {
@@ -923,6 +978,24 @@ fn builtin_tool_definitions(renderers: &[RendererDef]) -> Vec<Value> {
                         "description": "The agent platform calling this tool. Supported: 'claude_code', 'claude_desktop', 'codex', 'cursor', 'windsurf', 'opencode', 'antigravity'. If omitted or unrecognized, returns generic instructions."
                     }
                 }
+            }
+        }),
+        serde_json::json!({
+            "name": "mcpviews_install_plugin",
+            "description": "Install a plugin into MCPViews. Provide a plugin manifest as JSON, and optionally a download URL for a .zip package containing renderer assets.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "manifest_json": {
+                        "type": "string",
+                        "description": "JSON string of a PluginManifest object defining the plugin's name, version, renderers, MCP config, and tool rules."
+                    },
+                    "download_url": {
+                        "type": "string",
+                        "description": "Optional URL to a .zip package to download and install. If provided, the manifest is extracted from the package and manifest_json is ignored for plugin registration (but still required for validation)."
+                    }
+                },
+                "required": ["manifest_json"]
             }
         }),
     ]

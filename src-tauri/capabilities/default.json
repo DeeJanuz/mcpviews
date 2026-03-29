@@ -1,7 +1,7 @@
 {
   "identifier": "default",
   "description": "Default capabilities for MCPViews",
-  "windows": ["main"],
+  "windows": ["main", "plugin-manager"],
   "permissions": [
     "core:default",
     "core:event:default",
@@ -10,6 +10,7 @@
     "core:window:allow-hide",
     "core:window:allow-set-focus",
     "shell:default",
-    "autostart:default"
+    "autostart:default",
+    "dialog:default"
   ]
 }
