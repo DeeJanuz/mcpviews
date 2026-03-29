@@ -278,6 +278,22 @@ Update an installed plugin to the latest version from the cached registry. Downl
 await invoke('update_plugin', { name: 'plugin-name' });
 ```
 
+### `reinstall_plugin`
+
+Reinstall a plugin from the registry. If the plugin exists in the cached registry, it is re-downloaded and installed (replacing the current version). For non-registry (local-only) plugins, the command verifies the plugin exists but does not re-download.
+
+```javascript
+await invoke('reinstall_plugin', { name: 'plugin-name' });
+```
+
+### `clear_plugin_auth`
+
+Remove the stored authentication token for a plugin. Deletes the token file at `~/.mcpviews/auth/<name>.json`. Returns success even if no token file exists.
+
+```javascript
+await invoke('clear_plugin_auth', { name: 'plugin-name' });
+```
+
 ### `get_plugin_renderers`
 
 Scan installed plugin directories for custom renderer JS files.

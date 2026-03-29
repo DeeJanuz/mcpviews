@@ -267,9 +267,9 @@ Auth resolution is centralized in the `PluginAuth::resolve_header()` method in t
 1. **Stored token** -- `token_store::load_stored_token()` reads `~/.mcpviews/auth/<plugin-name>.json`, deserializes it as a `StoredToken`, and checks expiry. Expired tokens return `None`.
 2. **Environment variable** -- fall back to the configured `token_env` / `key_env` variable
 
-For OAuth, `token_store::load_stored_token()` handles the full cycle: load, deserialize, expiry check. Token storage after OAuth flows uses `token_store::store_token()`.
+For OAuth, `token_store::load_stored_token()` handles the full cycle: load, deserialize, expiry check. Token storage after OAuth flows uses `token_store::store_token()`. Token removal (for re-auth or uninstall cleanup) uses `token_store::remove_token()`, which deletes the token file and succeeds silently if no file exists.
 
-This means users no longer need to set environment variables manually. After installing a plugin that requires Bearer or API Key auth, MCPViews immediately prompts for the token via a modal dialog. The token can also be configured later via the "Configure Auth" button in the Plugin Manager.
+This means users no longer need to set environment variables manually. After installing a plugin that requires Bearer or API Key auth, MCPViews immediately prompts for the token via a modal dialog. The token can also be configured later via the Plugin Manager -- "Configure Auth" for first-time setup or "Re-auth" for plugins with existing tokens.
 
 ### 4. Create the manifest file
 
@@ -335,12 +335,21 @@ Plugins can be added or removed at runtime via the CLI or GUI. When a plugin is 
 When a plugin is removed:
 
 1. The manifest file is deleted from `~/.mcpviews/plugins/`
-2. The desktop app unloads the plugin
-3. Cached tool data for the plugin is cleared
+2. Any stored auth token at `~/.mcpviews/auth/<name>.json` is deleted
+3. The desktop app unloads the plugin
+4. Cached tool data for the plugin is cleared
 
 ### Plugin Updates
 
 The `list_plugins` command now compares installed plugin versions against the cached registry and returns an `update_available` field with the new version string when an update exists. The `update_plugin` command downloads and installs the latest version from the registry, replacing the existing plugin.
+
+### Plugin Reinstall
+
+Installed plugins can be reinstalled from the registry via the "Reinstall" button in the Plugin Manager or the `reinstall_plugin` IPC command. For registry plugins, this re-downloads and installs the current registry version, replacing the local copy. For local-only plugins (not in any registry), the command verifies the plugin exists but does not re-download.
+
+### Re-authentication
+
+Plugins with authentication can be re-authenticated via the "Re-auth" button in the Plugin Manager. This first clears the existing stored token (via `clear_plugin_auth`) and then triggers the standard auth configuration flow (token prompt for Bearer/API Key, browser redirect for OAuth). The button label shows "Configure Auth" for plugins that have not yet been authenticated and "Re-auth" for plugins with existing auth tokens.
 
 ### Hot Reload
 
