@@ -63,15 +63,22 @@ impl AppState {
 
     /// Install a plugin from a parsed manifest, upserting (removing any existing plugin
     /// with the same name first). This is the core logic shared by MCP and Tauri commands.
+    /// When `preserve_files` is true, only clears in-memory state on upsert (used by
+    /// zip-based installs where extraction already placed files on disk).
     pub fn install_plugin_from_manifest(
         &self,
         manifest: mcpviews_shared::PluginManifest,
+        preserve_files: bool,
     ) -> Result<String, String> {
         let plugin_name = manifest.name.clone();
         {
             let mut registry = self.plugin_registry.lock().unwrap();
             if registry.manifests.iter().any(|m| m.name == plugin_name) {
-                let _ = registry.remove_plugin(&plugin_name);
+                if preserve_files {
+                    let _ = registry.remove_plugin_in_memory(&plugin_name);
+                } else {
+                    let _ = registry.remove_plugin(&plugin_name);
+                }
             }
             registry.add_plugin(manifest)?;
         }
@@ -141,7 +148,7 @@ mod tests {
             auth: None,
             tool_prefix: "test".to_string(),
         });
-        state.install_plugin_from_manifest(manifest).unwrap();
+        state.install_plugin_from_manifest(manifest, false).unwrap();
         let origins = state.plugin_csp_origins();
         assert_eq!(origins.len(), 1);
         assert!(origins.contains(&"https://api.example.com".to_string()));
@@ -151,7 +158,7 @@ mod tests {
     fn test_plugin_csp_origins_no_mcp() {
         let (state, _dir) = test_app_state();
         let manifest = test_manifest("no-mcp-plugin");
-        state.install_plugin_from_manifest(manifest).unwrap();
+        state.install_plugin_from_manifest(manifest, false).unwrap();
         let origins = state.plugin_csp_origins();
         assert!(origins.is_empty());
     }
@@ -171,8 +178,8 @@ mod tests {
             auth: None,
             tool_prefix: "b".to_string(),
         });
-        state.install_plugin_from_manifest(m1).unwrap();
-        state.install_plugin_from_manifest(m2).unwrap();
+        state.install_plugin_from_manifest(m1, false).unwrap();
+        state.install_plugin_from_manifest(m2, false).unwrap();
         let origins = state.plugin_csp_origins();
         assert_eq!(origins.len(), 1);
         assert!(origins.contains(&"https://api.example.com".to_string()));

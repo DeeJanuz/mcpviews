@@ -851,7 +851,7 @@ async fn call_install_plugin(
 
     let plugin_name = {
         let state_guard = state.lock().await;
-        state_guard.inner.install_plugin_from_manifest(manifest)?
+        state_guard.inner.install_plugin_from_manifest(manifest, download_url.is_some())?
     };
 
     // Notify MCP clients and GUI
@@ -1472,7 +1472,7 @@ mod tests {
         let (state, _dir) = crate::test_utils::test_app_state();
         let manifest = crate::test_utils::test_manifest("test-install");
 
-        let result = state.install_plugin_from_manifest(manifest);
+        let result = state.install_plugin_from_manifest(manifest, false);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "test-install");
 
@@ -1494,7 +1494,7 @@ mod tests {
         let (state, _dir) = crate::test_utils::test_app_state();
         let manifest_v1 = crate::test_utils::test_manifest("upsert-plugin");
 
-        state.install_plugin_from_manifest(manifest_v1).unwrap();
+        state.install_plugin_from_manifest(manifest_v1, false).unwrap();
         {
             let registry = state.plugin_registry.lock().unwrap();
             assert_eq!(registry.manifests.len(), 1);
@@ -1502,7 +1502,7 @@ mod tests {
 
         let mut manifest_v2 = crate::test_utils::test_manifest("upsert-plugin");
         manifest_v2.version = "2.0.0".to_string();
-        state.install_plugin_from_manifest(manifest_v2).unwrap();
+        state.install_plugin_from_manifest(manifest_v2, false).unwrap();
 
         let registry = state.plugin_registry.lock().unwrap();
         assert_eq!(registry.manifests.len(), 1);
