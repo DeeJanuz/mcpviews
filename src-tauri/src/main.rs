@@ -89,6 +89,8 @@ fn main() {
                 .or_else(|| uri.strip_prefix("plugin://localhost"))
                 .unwrap_or("");
 
+            // Strip query string (e.g., ?v=123 cache-busting param)
+            let path = path.split('?').next().unwrap_or(path);
             let mut parts = path.splitn(2, '/');
             let plugin_name = parts.next().unwrap_or("");
             let file_path = parts.next().unwrap_or("");
