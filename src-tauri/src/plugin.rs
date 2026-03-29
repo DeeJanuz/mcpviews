@@ -204,6 +204,20 @@ impl PluginRegistry {
 
     /// Remove a plugin by name, deleting its manifest from disk.
     pub fn remove_plugin(&mut self, name: &str) -> Result<(), String> {
+        self.remove_plugin_in_memory(name)?;
+
+        // Ignore error if file already gone
+        let _ = self.store.remove(name);
+
+        eprintln!("[mcpviews] Uninstalled plugin: {}", name);
+        Ok(())
+    }
+
+    /// Remove a plugin from in-memory state only (manifests vec + tool cache).
+    /// Does NOT delete files from disk. Used by zip-based install paths where
+    /// the extraction has already placed files on disk and we don't want to
+    /// delete them before re-adding the plugin.
+    pub fn remove_plugin_in_memory(&mut self, name: &str) -> Result<(), String> {
         let idx = self
             .manifests
             .iter()
@@ -212,13 +226,8 @@ impl PluginRegistry {
 
         self.manifests.remove(idx);
         self.tool_cache.remove(idx);
-
-        // Ignore error if file already gone
-        let _ = self.store.remove(name);
-
         self.tool_cache.rebuild_index();
 
-        eprintln!("[mcpviews] Uninstalled plugin: {}", name);
         Ok(())
     }
 

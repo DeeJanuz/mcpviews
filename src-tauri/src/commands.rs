@@ -323,7 +323,8 @@ async fn install_or_update_from_entry(
 
         let mut registry = state.plugin_registry.lock().unwrap();
         if registry.manifests.iter().any(|m| m.name == manifest.name) {
-            let _ = registry.remove_plugin(&manifest.name);
+            // Only clear in-memory state — zip extraction already placed files on disk
+            let _ = registry.remove_plugin_in_memory(&manifest.name);
         }
         registry.add_plugin(manifest)?;
     } else {
@@ -366,8 +367,9 @@ pub fn install_plugin_from_zip(
 
     let mut registry = state.plugin_registry.lock().unwrap();
     // Remove if already exists (for reinstall/update)
+    // Only clear in-memory state — zip extraction already placed files on disk
     if registry.manifests.iter().any(|m| m.name == manifest.name) {
-        let _ = registry.remove_plugin(&manifest.name);
+        let _ = registry.remove_plugin_in_memory(&manifest.name);
     }
     registry.add_plugin(manifest)?;
     drop(registry);
