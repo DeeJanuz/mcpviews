@@ -1,7 +1,7 @@
 # Technical Debt & Enhancement Log
 
 **Last Updated:** 2026-03-29
-**Total Active Issues:** 0
+**Total Active Issues:** 2
 **Resolved This Month:** 42
 
 ---
@@ -18,7 +18,8 @@ _None_
 
 ### Medium
 
-_None_
+- **M-022:** Duplicated auth-lookup block in `commands.rs` -- `get_plugin_auth_header` (lines 262-274) and `start_plugin_auth` (lines 203-215) contain identical 12-line pattern: lock registry, find manifest by name, extract auth config. Extract to `resolve_plugin_auth(state, plugin_name) -> Result<PluginAuth, String>` helper. _(Commit 2565475)_
+- **M-023:** No test coverage for `get_plugin_auth_header` command -- function has 3 code paths (stored token, OAuth refresh, no token error) with no tests. Prior commit (8e9fc5f) established the pattern of testing new commands. _(Commit 2565475)_
 
 ### Low
 
@@ -27,6 +28,10 @@ _None_
 ---
 
 ## Resolved Issues
+
+### Resolved 2026-03-29
+
+- **M-021:** Duplicated `on_web_resource_request` CSP-injection closure in `main.rs` -- extracted `csp_request_hook(state)` helper function that returns the closure, used by both main and plugin-manager window builders _(Commit c88d26f → resolved)_
 
 ### Resolved 2026-03-29 (commit 8e9fc5f)
 
@@ -112,6 +117,8 @@ _None_
 
 | Commit | Date | Score | Rating |
 |--------|------|-------|--------|
+| 2565475 | 2026-03-29 | 72/100 | Good |
+| c88d26f | 2026-03-29 | 78/100 | Good |
 | 8e9fc5f | 2026-03-29 | 90/100 | Excellent |
 | 924259d | 2026-03-29 | 68/100 | Acceptable |
 | 2e08937 | 2026-03-28 | 78/100 | Good |
