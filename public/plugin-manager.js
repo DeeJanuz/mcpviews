@@ -531,6 +531,14 @@
   // --- Init ---
 
   function init() {
+    // Attach tab click listeners (inline onclick blocked by Tauri CSP nonces)
+    var tabs = document.querySelectorAll('.tab[data-tab]');
+    for (var i = 0; i < tabs.length; i++) {
+      tabs[i].addEventListener('click', function () {
+        switchTab(this.getAttribute('data-tab'));
+      });
+    }
+
     if (!window.__TAURI__) {
       console.log('Tauri API not available');
       return;
