@@ -548,7 +548,7 @@ Install a plugin into MCPViews programmatically. Accepts a plugin manifest as JS
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `manifest_json` | string | Yes | JSON string of a `PluginManifest` object defining the plugin's name, version, renderers, MCP config, and tool rules. |
-| `download_url` | string | No | URL to a `.zip` package to download and install. If provided, the manifest is extracted from the package and `manifest_json` is used only for validation. |
+| `download_url` | string | No | URL to a `.zip` package to download and install. If provided, the manifest is extracted from the package and the `manifest_json` parameter is not used. |
 
 **Response:**
 ```json

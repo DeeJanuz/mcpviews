@@ -1,8 +1,8 @@
 # Technical Debt & Enhancement Log
 
 **Last Updated:** 2026-03-29
-**Total Active Issues:** 2
-**Resolved This Month:** 40
+**Total Active Issues:** 0
+**Resolved This Month:** 42
 
 ---
 
@@ -18,15 +18,20 @@ _None_
 
 ### Medium
 
-- **M-020:** `call_install_plugin` in `mcp_tools.rs` has no test coverage -- new function with branching logic (download vs. manifest-only, existing vs. new plugin) follows project pattern of tested command handlers but was added without tests. File: `src-tauri/src/mcp_tools.rs:824-874`
+_None_
 
 ### Low
 
-- **L-018:** `call_install_plugin` calls `mcpviews_shared::plugins_dir()` global instead of using `plugin_store` from `AppState` -- inconsistent with prior refactoring (resolved M-010) that moved plugins_dir into state. File: `src-tauri/src/mcp_tools.rs:843`
+_None_
 
 ---
 
 ## Resolved Issues
+
+### Resolved 2026-03-29 (commit 8e9fc5f)
+
+- **M-020:** `call_install_plugin` in `mcp_tools.rs` has no test coverage -- extracted `install_plugin_from_manifest()` on `AppState` for testability, added 5 unit tests covering manifest install, missing params, invalid JSON, upsert behavior, and schema description accuracy
+- **L-018:** `call_install_plugin` calls `mcpviews_shared::plugins_dir()` global instead of using `plugin_store` from `AppState` -- replaced with `AppState::plugins_dir()` which delegates to `PluginStore::dir()`, consistent with prior M-010 refactoring
 
 ### Resolved 2026-03-28 (commit 4b0b747)
 
@@ -107,6 +112,7 @@ _None_
 
 | Commit | Date | Score | Rating |
 |--------|------|-------|--------|
+| 8e9fc5f | 2026-03-29 | 90/100 | Excellent |
 | 924259d | 2026-03-29 | 68/100 | Acceptable |
 | 2e08937 | 2026-03-28 | 78/100 | Good |
 | da52e1f | 2026-03-28 | 82/100 | Good |
