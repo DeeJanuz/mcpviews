@@ -579,6 +579,7 @@ mod tests {
             renderer_definitions: vec![],
             tool_rules: HashMap::new(),
             no_auto_push: vec![],
+            registry_index: None,
         }
     }
 

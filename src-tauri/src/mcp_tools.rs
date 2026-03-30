@@ -64,6 +64,7 @@ pub async fn call_tool(
         "init_session" => call_init_session(arguments, state).await,
         "mcpviews_setup" => call_mcpviews_setup(arguments, state).await,
         "mcpviews_install_plugin" => call_install_plugin(arguments, state).await,
+        "get_plugin_docs" => call_get_plugin_docs(arguments, state).await,
         _ => {
             // Check plugin tools — scope MutexGuard to block before any .await
             let (plugin_info, client) = lookup_plugin_tool(name, state).await;
@@ -380,6 +381,135 @@ pub(crate) fn collect_rules(
     rules
 }
 
+/// Collect only built-in (universal) rules — renderer_selection + universal renderer rules.
+pub(crate) fn collect_builtin_rules(all_renderers: &[RendererDef]) -> Vec<Value> {
+    let mut rules: Vec<Value> = Vec::new();
+
+    // Cross-cutting renderer selection rule
+    rules.push(serde_json::json!({
+        "name": "renderer_selection",
+        "category": "system",
+        "source": "built-in",
+        "rule": "When displaying content in MCPViews, choose the renderer based on data shape:\n\n- **rich_content**: Prose, explanations, diagrams (mermaid), code blocks, simple markdown tables (<10 rows). Default choice.\n- **structured_data**: Tabular data with sort/filter/expand needs, hierarchical rows, or proposed changes requiring accept/reject review. Use push_review for change approval workflows.\n- **Plugin renderers**: If a plugin provides a domain-specific renderer (e.g., search_results), prefer it over generic renderers for that plugin's tool output.\n\nWhen uncertain, default to rich_content. Only use structured_data when the data is genuinely tabular with columns and rows."
+    }));
+
+    // Only built-in (universal scope) renderers with rules
+    for renderer in all_renderers {
+        if renderer.scope == "universal" {
+            if let Some(rule) = &renderer.rule {
+                rules.push(serde_json::json!({
+                    "name": format!("{}_usage", renderer.name),
+                    "category": "renderer",
+                    "source": "built-in",
+                    "renderer": renderer.name,
+                    "description": renderer.description,
+                    "scope": renderer.scope,
+                    "data_hint": renderer.data_hint,
+                    "tools": renderer.tools,
+                    "rule": rule,
+                }));
+            }
+        }
+    }
+
+    rules
+}
+
+/// Collect rules for a single plugin, optionally filtered by tool names and/or renderer names.
+pub(crate) fn collect_plugin_rules(
+    all_renderers: &[RendererDef],
+    manifest: &mcpviews_shared::PluginManifest,
+    tool_filter: Option<&[String]>,
+    renderer_filter: Option<&[String]>,
+) -> Vec<Value> {
+    let mut rules: Vec<Value> = Vec::new();
+
+    let tool_prefix = manifest
+        .mcp
+        .as_ref()
+        .map(|m| m.tool_prefix.as_str())
+        .unwrap_or("");
+
+    // Determine which renderers are associated with filtered tools
+    let mut relevant_renderers: std::collections::HashSet<String> = std::collections::HashSet::new();
+    if let Some(tools) = tool_filter {
+        for tool_name in tools {
+            if let Some(renderer_name) = manifest.renderers.get(tool_name) {
+                relevant_renderers.insert(renderer_name.clone());
+            }
+        }
+    }
+    if let Some(renderers) = renderer_filter {
+        for r in renderers {
+            relevant_renderers.insert(r.clone());
+        }
+    }
+
+    let has_filter = tool_filter.is_some() || renderer_filter.is_some();
+
+    // Renderer rules — only non-universal (plugin) renderers
+    for renderer in all_renderers {
+        if renderer.scope == "universal" {
+            continue;
+        }
+
+        // If filters are active, only include matching renderers
+        if has_filter && !relevant_renderers.contains(&renderer.name) {
+            continue;
+        }
+
+        if let Some(rule) = &renderer.rule {
+            rules.push(serde_json::json!({
+                "name": format!("{}_usage", renderer.name),
+                "category": "renderer",
+                "source": "plugin",
+                "renderer": renderer.name,
+                "description": renderer.description,
+                "scope": renderer.scope,
+                "data_hint": renderer.data_hint,
+                "tools": renderer.tools,
+                "rule": rule,
+            }));
+        } else if renderer.scope == "tool" && !renderer.tools.is_empty() {
+            rules.push(serde_json::json!({
+                "name": format!("{}_usage", renderer.name),
+                "category": "renderer",
+                "source": "plugin",
+                "renderer": renderer.name,
+                "description": renderer.description,
+                "scope": renderer.scope,
+                "data_hint": renderer.data_hint,
+                "tools": renderer.tools,
+            }));
+        }
+    }
+
+    // Plugin tool rules
+    for (tool_name, rule) in &manifest.tool_rules {
+        // If tools filter is active, only include matching tools
+        if let Some(tools) = tool_filter {
+            if !tools.iter().any(|t| t == tool_name) {
+                continue;
+            }
+        }
+
+        let prefixed_name = if tool_prefix.is_empty() {
+            tool_name.clone()
+        } else {
+            format!("{}__{}", tool_prefix, tool_name)
+        };
+        rules.push(serde_json::json!({
+            "name": format!("{}_usage", prefixed_name),
+            "category": "tool",
+            "source": &manifest.name,
+            "tool": prefixed_name,
+            "rule": rule,
+        }));
+    }
+
+    rules
+}
+
 /// Collect auth status for each plugin that has MCP + auth configured.
 pub(crate) fn collect_plugin_auth_status(
     manifests: &[mcpviews_shared::PluginManifest],
@@ -475,6 +605,142 @@ async fn gather_session_data(state: &Arc<TokioMutex<AsyncAppState>>) -> (Vec<Val
     (rules, plugin_status, available_tools)
 }
 
+fn auto_derive_registry_index(
+    manifest: &mcpviews_shared::PluginManifest,
+    cached_tools: Option<&[serde_json::Value]>,
+) -> mcpviews_shared::PluginRegistryIndex {
+    let prefix = manifest
+        .mcp
+        .as_ref()
+        .map(|m| m.tool_prefix.as_str())
+        .unwrap_or("");
+
+    // Group tools by renderer name
+    let mut renderer_tools: std::collections::HashMap<&str, Vec<&str>> =
+        std::collections::HashMap::new();
+    let mut ungrouped_tools: Vec<&str> = Vec::new();
+
+    // Track which tools are mapped to renderers
+    let mapped_tools: std::collections::HashSet<&str> = manifest.renderers.keys().map(|s| s.as_str()).collect();
+
+    for (tool_name, renderer_name) in &manifest.renderers {
+        renderer_tools
+            .entry(renderer_name.as_str())
+            .or_default()
+            .push(tool_name.as_str());
+    }
+
+    // Find unmapped tools from cache
+    if let Some(tools) = cached_tools {
+        for tool in tools {
+            if let Some(name) = tool.get("name").and_then(|n| n.as_str()) {
+                let unprefixed = if !prefix.is_empty() {
+                    name.strip_prefix(prefix).unwrap_or(name)
+                } else {
+                    name
+                };
+                if !mapped_tools.contains(unprefixed) {
+                    ungrouped_tools.push(unprefixed);
+                }
+            }
+        }
+    }
+
+    let mut tool_groups: Vec<mcpviews_shared::ToolGroupEntry> = Vec::new();
+
+    for (renderer_name, tool_names) in &renderer_tools {
+        // Get a hint from the first tool's description
+        let hint = if let Some(tools) = cached_tools {
+            let prefixed = format!("{}{}", prefix, tool_names[0]);
+            tools.iter()
+                .find(|t| t.get("name").and_then(|n| n.as_str()) == Some(&prefixed))
+                .and_then(|t| t.get("description").and_then(|d| d.as_str()))
+                .map(|d| {
+                    let truncated: String = d.chars().take(80).collect();
+                    if d.len() > 80 { format!("{}...", truncated) } else { truncated }
+                })
+                .unwrap_or_else(|| format!("Tools for {}", renderer_name))
+        } else {
+            format!("Tools for {}", renderer_name)
+        };
+
+        // Title-case the renderer name
+        let name = renderer_name
+            .split('_')
+            .map(|w| {
+                let mut c = w.chars();
+                match c.next() {
+                    None => String::new(),
+                    Some(f) => f.to_uppercase().to_string() + c.as_str(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        tool_groups.push(mcpviews_shared::ToolGroupEntry {
+            name,
+            hint,
+            tools: tool_names.iter().map(|s| s.to_string()).collect(),
+        });
+    }
+
+    // Add ungrouped tools if any
+    if !ungrouped_tools.is_empty() {
+        tool_groups.push(mcpviews_shared::ToolGroupEntry {
+            name: "Other".to_string(),
+            hint: "Additional tools".to_string(),
+            tools: ungrouped_tools.iter().map(|s| s.to_string()).collect(),
+        });
+    }
+
+    let renderer_names: Vec<String> = renderer_tools.keys().map(|s| s.to_string()).collect();
+    let tags: Vec<String> = renderer_names.iter().map(|r| r.replace('_', "-")).collect();
+
+    mcpviews_shared::PluginRegistryIndex {
+        summary: format!("{} plugin", manifest.name),
+        tags,
+        tool_groups,
+        renderer_names,
+    }
+}
+
+fn build_plugin_registry(
+    manifests: &[mcpviews_shared::PluginManifest],
+    tool_cache: &crate::tool_cache::ToolCache,
+) -> Vec<Value> {
+    manifests.iter().enumerate().map(|(idx, manifest)| {
+        let index = match &manifest.registry_index {
+            Some(ri) => ri.clone(),
+            None => {
+                let cached_tools = tool_cache.plugin_tools(idx);
+                auto_derive_registry_index(manifest, cached_tools)
+            }
+        };
+
+        serde_json::json!({
+            "name": manifest.name,
+            "summary": index.summary,
+            "tags": index.tags,
+            "tool_groups": index.tool_groups.iter().map(|g| serde_json::json!({
+                "name": g.name,
+                "hint": g.hint,
+                "tools": g.tools,
+            })).collect::<Vec<Value>>(),
+            "renderers": index.renderer_names,
+        })
+    }).collect()
+}
+
+async fn gather_slim_session_data(state: &Arc<TokioMutex<AsyncAppState>>) -> (Vec<Value>, Vec<Value>, Vec<Value>) {
+    let state_guard = state.lock().await;
+    let all_renderers = available_renderers(&state_guard.inner);
+    let registry = state_guard.inner.plugin_registry.lock().unwrap();
+    let rules = collect_builtin_rules(&all_renderers);
+    let plugin_status = collect_plugin_auth_status(&registry.manifests);
+    let plugin_registry = build_plugin_registry(&registry.manifests, &registry.tool_cache);
+    (rules, plugin_status, plugin_registry)
+}
+
 async fn call_init_session(
     arguments: Value,
     state: &Arc<TokioMutex<AsyncAppState>>,
@@ -484,13 +750,13 @@ async fn call_init_session(
         .and_then(|v| v.as_str())
         .unwrap_or("generic");
 
-    let (rules, plugin_status, available_tools) = gather_session_data(state).await;
+    let (rules, plugin_status, plugin_registry) = gather_slim_session_data(state).await;
 
     let response = serde_json::json!({
         "rules": rules,
         "plugin_status": plugin_status,
         "persistence_instructions": persistence_instructions(agent_type),
-        "available_tools": available_tools,
+        "plugin_registry": plugin_registry,
     });
 
     Ok(serde_json::json!({
@@ -535,6 +801,92 @@ async fn call_mcpviews_setup(
         "persistence_instructions": persistence_instructions(agent_type),
         "setup_instructions": setup_instructions(agent_type),
         "available_tools": available_tools,
+    });
+
+    Ok(serde_json::json!({
+        "content": [{
+            "type": "text",
+            "text": serde_json::to_string(&response).unwrap()
+        }]
+    }))
+}
+
+async fn call_get_plugin_docs(
+    arguments: Value,
+    state: &Arc<TokioMutex<AsyncAppState>>,
+) -> Result<Value, String> {
+    let plugin_name = arguments
+        .get("plugin")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing required parameter: plugin")?;
+
+    let groups_filter: Option<Vec<String>> = arguments
+        .get("groups")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+
+    let tools_filter: Option<Vec<String>> = arguments
+        .get("tools")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+
+    let renderers_filter: Option<Vec<String>> = arguments
+        .get("renderers")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+
+    let state_guard = state.lock().await;
+    let all_renderers = available_renderers(&state_guard.inner);
+    let registry = state_guard.inner.plugin_registry.lock().unwrap();
+
+    let (_, manifest) = registry
+        .find_plugin_by_name(plugin_name)
+        .ok_or_else(|| format!("Plugin '{}' not found", plugin_name))?;
+
+    // Expand groups filter to tool names
+    let mut expanded_tools: Vec<String> = Vec::new();
+    if let Some(groups) = &groups_filter {
+        if let Some(ri) = &manifest.registry_index {
+            for group in &ri.tool_groups {
+                if groups.iter().any(|g| g.eq_ignore_ascii_case(&group.name)) {
+                    expanded_tools.extend(group.tools.clone());
+                }
+            }
+        }
+        // Also try auto-derived index for manifests without registry_index
+        if manifest.registry_index.is_none() {
+            let cached_tools = registry.tool_cache.plugin_tools(
+                registry.manifests.iter().position(|m| m.name == plugin_name).unwrap_or(0)
+            );
+            let derived = auto_derive_registry_index(manifest, cached_tools);
+            for group in &derived.tool_groups {
+                if groups.iter().any(|g| g.eq_ignore_ascii_case(&group.name)) {
+                    expanded_tools.extend(group.tools.clone());
+                }
+            }
+        }
+    }
+
+    // Merge expanded group tools with explicit tool filter
+    let final_tool_filter = if expanded_tools.is_empty() {
+        tools_filter.as_deref()
+    } else {
+        if let Some(extra) = &tools_filter {
+            expanded_tools.extend(extra.clone());
+        }
+        Some(expanded_tools.as_slice())
+    };
+
+    let rules = collect_plugin_rules(
+        &all_renderers,
+        manifest,
+        final_tool_filter,
+        renderers_filter.as_deref(),
+    );
+
+    let response = serde_json::json!({
+        "plugin": plugin_name,
+        "rules": rules,
     });
 
     Ok(serde_json::json!({
@@ -909,10 +1261,11 @@ async fn call_install_plugin(
 
 fn build_data_description(renderers: &[RendererDef], prefix: &str) -> String {
     let hints = renderers.iter()
+        .filter(|r| r.scope == "universal")
         .filter_map(|r| r.data_hint.as_ref().map(|h| format!("For {}: {}", r.name, h)))
         .collect::<Vec<_>>()
         .join(". ");
-    format!("{} {}", prefix, hints)
+    format!("{} {} For plugin renderer data shapes, call get_plugin_docs.", prefix, hints)
 }
 
 fn builtin_tool_definitions(renderers: &[RendererDef]) -> Vec<Value> {
@@ -1030,6 +1383,35 @@ fn builtin_tool_definitions(renderers: &[RendererDef]) -> Vec<Value> {
                 "required": ["manifest_json"]
             }
         }),
+        serde_json::json!({
+            "name": "get_plugin_docs",
+            "description": "Fetch detailed usage docs for a plugin's tools and renderers. Call after init_session identifies which plugin you need.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "plugin": {
+                        "type": "string",
+                        "description": "Plugin name (e.g., 'ludflow', 'decidr')"
+                    },
+                    "groups": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Optional: specific tool group names to fetch (e.g., ['Search', 'Code Analysis'])"
+                    },
+                    "tools": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Optional: specific tool names to fetch (unprefixed, e.g., ['search_codebase'])"
+                    },
+                    "renderers": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Optional: specific renderer names to fetch (e.g., ['code_units', 'search_results'])"
+                    }
+                },
+                "required": ["plugin"]
+            }
+        }),
     ]
 }
 
@@ -1052,6 +1434,7 @@ mod tests {
             renderer_definitions: renderer_defs,
             tool_rules,
             no_auto_push: vec![],
+            registry_index: None,
         }
     }
 
@@ -1337,6 +1720,7 @@ mod tests {
             renderer_definitions: vec![],
             tool_rules: std::collections::HashMap::new(),
             no_auto_push: vec![],
+            registry_index: None,
         }
     }
 
@@ -1608,5 +1992,193 @@ mod tests {
         assert_eq!(def.tools.len(), 2);
         assert!(def.tools.contains(&"search_codebase".to_string()));
         assert!(def.tools.contains(&"vector_search".to_string()));
+    }
+
+    // ─── collect_builtin_rules tests ───
+
+    #[test]
+    fn test_collect_builtin_rules_includes_renderer_selection() {
+        let rules = collect_builtin_rules(&[]);
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0]["name"], "renderer_selection");
+    }
+
+    #[test]
+    fn test_collect_builtin_rules_includes_universal_renderers_only() {
+        let renderers = vec![
+            RendererDef {
+                name: "rich_content".into(),
+                description: "Universal markdown".into(),
+                scope: "universal".into(),
+                tools: vec![],
+                data_hint: Some("{ title, body }".into()),
+                rule: Some("Use for prose.".into()),
+                display_mode: None,
+                invoke_schema: None,
+                url_patterns: vec![],
+            },
+            RendererDef {
+                name: "search_results".into(),
+                description: "Search output".into(),
+                scope: "tool".into(),
+                tools: vec!["search_codebase".into()],
+                data_hint: Some("Pass search results".into()),
+                rule: Some("Use for search output.".into()),
+                display_mode: None,
+                invoke_schema: None,
+                url_patterns: vec![],
+            },
+        ];
+        let rules = collect_builtin_rules(&renderers);
+        // renderer_selection + rich_content_usage, but NOT search_results
+        assert_eq!(rules.len(), 2);
+        assert!(rules.iter().any(|r| r["name"] == "rich_content_usage"));
+        assert!(!rules.iter().any(|r| r["name"] == "search_results_usage"));
+    }
+
+    // ─── collect_plugin_rules tests ───
+
+    #[test]
+    fn test_collect_plugin_rules_unfiltered() {
+        let renderers = vec![RendererDef {
+            name: "search_results".into(),
+            description: "Search output".into(),
+            scope: "tool".into(),
+            tools: vec!["search_codebase".into()],
+            data_hint: Some("Pass search results".into()),
+            rule: None,
+            display_mode: None,
+            invoke_schema: None,
+            url_patterns: vec![],
+        }];
+        let mut tool_rules = std::collections::HashMap::new();
+        tool_rules.insert("search_codebase".to_string(), "Use search for queries.".to_string());
+        let manifest = make_manifest(
+            "test-plugin",
+            vec![],
+            tool_rules,
+            Some(PluginMcpConfig {
+                url: "http://localhost:8080".into(),
+                auth: None,
+                tool_prefix: "tp".into(),
+            }),
+        );
+        let rules = collect_plugin_rules(&renderers, &manifest, None, None);
+        // search_results renderer + search_codebase tool rule
+        assert_eq!(rules.len(), 2);
+    }
+
+    #[test]
+    fn test_collect_plugin_rules_filtered_by_renderer() {
+        let renderers = vec![
+            RendererDef {
+                name: "search_results".into(),
+                description: "Search".into(),
+                scope: "tool".into(),
+                tools: vec!["search_codebase".into()],
+                data_hint: None,
+                rule: None,
+                display_mode: None,
+                invoke_schema: None,
+                url_patterns: vec![],
+            },
+            RendererDef {
+                name: "code_units".into(),
+                description: "Code".into(),
+                scope: "tool".into(),
+                tools: vec!["get_code_units".into()],
+                data_hint: None,
+                rule: None,
+                display_mode: None,
+                invoke_schema: None,
+                url_patterns: vec![],
+            },
+        ];
+        let manifest = make_manifest("test-plugin", vec![], std::collections::HashMap::new(), None);
+        let renderer_filter = vec!["search_results".to_string()];
+        let rules = collect_plugin_rules(&renderers, &manifest, None, Some(&renderer_filter));
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0]["renderer"], "search_results");
+    }
+
+    #[test]
+    fn test_collect_plugin_rules_skips_universal() {
+        let renderers = vec![RendererDef {
+            name: "rich_content".into(),
+            description: "Universal".into(),
+            scope: "universal".into(),
+            tools: vec![],
+            data_hint: None,
+            rule: Some("Use for prose.".into()),
+            display_mode: None,
+            invoke_schema: None,
+            url_patterns: vec![],
+        }];
+        let manifest = make_manifest("test-plugin", vec![], std::collections::HashMap::new(), None);
+        let rules = collect_plugin_rules(&renderers, &manifest, None, None);
+        assert!(rules.is_empty());
+    }
+
+    // ─── auto_derive_registry_index tests ───
+
+    #[test]
+    fn test_auto_derive_registry_index_basic() {
+        let mut renderers_map = std::collections::HashMap::new();
+        renderers_map.insert("search_codebase".to_string(), "search_results".to_string());
+        renderers_map.insert("get_code_units".to_string(), "code_units".to_string());
+        let manifest = make_manifest_with_renderers("test-plugin", renderers_map, "tp__");
+        let index = auto_derive_registry_index(&manifest, None);
+        assert_eq!(index.summary, "test-plugin plugin");
+        assert_eq!(index.tool_groups.len(), 2);
+        assert!(index.renderer_names.contains(&"search_results".to_string()));
+        assert!(index.renderer_names.contains(&"code_units".to_string()));
+    }
+
+    #[test]
+    fn test_auto_derive_registry_index_with_cache() {
+        let mut renderers_map = std::collections::HashMap::new();
+        renderers_map.insert("search_codebase".to_string(), "search_results".to_string());
+        let manifest = make_manifest_with_renderers("test-plugin", renderers_map, "tp__");
+        let cached_tools = vec![serde_json::json!({
+            "name": "tp__search_codebase",
+            "description": "Search the codebase for matching code snippets"
+        })];
+        let index = auto_derive_registry_index(&manifest, Some(&cached_tools));
+        let group = index.tool_groups.iter().find(|g| g.tools.contains(&"search_codebase".to_string())).unwrap();
+        assert!(group.hint.contains("Search the codebase"));
+    }
+
+    // ─── build_data_description tests ───
+
+    #[test]
+    fn test_build_data_description_only_universal() {
+        let renderers = vec![
+            RendererDef {
+                name: "rich_content".into(),
+                description: "Universal".into(),
+                scope: "universal".into(),
+                tools: vec![],
+                data_hint: Some("{ title, body }".into()),
+                rule: None,
+                display_mode: None,
+                invoke_schema: None,
+                url_patterns: vec![],
+            },
+            RendererDef {
+                name: "search_results".into(),
+                description: "Search".into(),
+                scope: "tool".into(),
+                tools: vec![],
+                data_hint: Some("{ results: [...] }".into()),
+                rule: None,
+                display_mode: None,
+                invoke_schema: None,
+                url_patterns: vec![],
+            },
+        ];
+        let desc = build_data_description(&renderers, "Payload.");
+        assert!(desc.contains("rich_content"));
+        assert!(!desc.contains("search_results"));
+        assert!(desc.contains("get_plugin_docs"));
     }
 }

@@ -93,6 +93,10 @@ impl PluginRegistry {
         }
     }
 
+    pub fn find_plugin_by_name(&self, name: &str) -> Option<(usize, &PluginManifest)> {
+        self.manifests.iter().enumerate().find(|(_, m)| m.name == name)
+    }
+
     /// Return indices of plugins whose tool cache is stale or empty
     pub fn stale_plugin_indices(&self) -> Vec<usize> {
         self.tool_cache

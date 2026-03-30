@@ -49,6 +49,21 @@ fn default_renderer_scope() -> String {
     "tool".to_string()
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolGroupEntry {
+    pub name: String,
+    pub hint: String,
+    pub tools: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginRegistryIndex {
+    pub summary: String,
+    pub tags: Vec<String>,
+    pub tool_groups: Vec<ToolGroupEntry>,
+    pub renderer_names: Vec<String>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PluginManifest {
     pub name: String,
@@ -64,6 +79,8 @@ pub struct PluginManifest {
     /// Mutation tools (writes, deletes, etc.) typically belong here.
     #[serde(default)]
     pub no_auto_push: Vec<String>,
+    #[serde(default)]
+    pub registry_index: Option<PluginRegistryIndex>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

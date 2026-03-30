@@ -13,6 +13,7 @@ pub fn test_manifest(name: &str) -> mcpviews_shared::PluginManifest {
         renderer_definitions: vec![],
         tool_rules: std::collections::HashMap::new(),
         no_auto_push: vec![],
+        registry_index: None,
     }
 }
 
