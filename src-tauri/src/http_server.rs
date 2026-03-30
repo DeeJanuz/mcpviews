@@ -423,6 +423,15 @@ pub async fn start_http_server(app_state: Arc<AppState>, app_handle: AppHandle) 
                 .post(mcp_post_handler)
                 .delete(mcp_delete_handler),
         )
+        // Return JSON 404 for OAuth discovery — MCPViews doesn't use OAuth auth.
+        // Claude Code's HTTP transport client probes this endpoint and expects
+        // a parseable JSON response; axum's default plain-text 404 causes a parse error.
+        .route(
+            "/.well-known/oauth-authorization-server",
+            get(|| async {
+                (StatusCode::NOT_FOUND, axum::Json(serde_json::json!({"error": "not_found"})))
+            }),
+        )
         .layer(cors)
         .layer(Extension(async_state));
 
