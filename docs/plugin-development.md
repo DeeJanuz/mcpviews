@@ -317,13 +317,52 @@ The renderer scanner (`renderer_scanner.rs`) automatically discovers JS files in
 
 ## Agent Discovery and Renderer Definitions
 
-When an agent starts a session, MCPViews tells it which renderers are available and how to format payloads for each one. This happens automatically through two mechanisms:
+MCPViews uses a two-tier lazy-loading approach for plugin documentation, reducing session-start token usage:
 
-1. **Auto-discovery** — MCPViews reads the `renderers` map and the tool cache to learn which renderers exist and which tools map to them. This gives agents the renderer names and tool associations with zero plugin effort.
+1. **`init_session`** — Returns only built-in (universal) rules and a compact `plugin_registry` index. Each plugin entry lists its name, summary, tags, tool groups (with tool names and short hints), and renderer names. Agents use this index to identify which plugin provides the tools they need.
 
-2. **`renderer_definitions`** — The plugin provides structured metadata including `data_hint` (the payload shape) and optional `description` and `rule` fields. **This is essential** because MCPViews cannot infer what data shape each renderer expects from the tool cache alone.
+2. **`get_plugin_docs`** — Agents call this to fetch detailed rules for a specific plugin on-demand. Supports filtering by tool group name, individual tool name, or renderer name, so agents can request only the docs they need.
 
-Without `renderer_definitions`, agents will know a renderer *exists* but won't know how to construct the `data` payload when calling `push_content`. Auto-discovery covers the "what" (renderer names + tool mappings); `renderer_definitions` covers the "how" (payload shapes + behavioral guidance).
+The plugin registry index is either read from the manifest's `registry_index` field (see below) or auto-derived from the `renderers` map and tool cache. Auto-derivation groups tools by their mapped renderer, title-cases the group names, and uses truncated tool descriptions as hints.
+
+Under the hood, MCPViews automatically discovers plugin renderers by reading the `renderers` map and enriching entries with tool metadata from the MCP tool cache. This gives agents the renderer names and tool associations with zero plugin effort.
+
+However, **auto-discovery cannot infer payload shapes**. The tool cache contains tool *input* schemas (what you send to the tool), not renderer *data* schemas (what the renderer expects to display). Without `renderer_definitions` entries that include `data_hint`, agents will know a renderer *exists* but won't know how to construct the `data` payload when calling `push_content`. Auto-discovery covers the "what" (renderer names + tool mappings); `renderer_definitions` covers the "how" (payload shapes + behavioral guidance).
+
+### registry_index (Optional)
+
+If you want to control how your plugin appears in the `init_session` plugin registry instead of relying on auto-derivation, provide a `registry_index` in your manifest:
+
+```json
+{
+  "registry_index": {
+    "summary": "Code analysis and search tools for your codebase",
+    "tags": ["code-analysis", "search"],
+    "tool_groups": [
+      {
+        "name": "Search",
+        "hint": "Full-text and vector search across the codebase",
+        "tools": ["search_codebase", "vector_search"]
+      },
+      {
+        "name": "Code Analysis",
+        "hint": "Analyze code structure and dependencies",
+        "tools": ["get_code_units", "get_module_overview", "get_dependencies"]
+      }
+    ],
+    "renderer_names": ["search_results", "code_units", "module_overview", "dependencies"]
+  }
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `summary` | Yes | One-line description of the plugin. |
+| `tags` | Yes | Keyword tags for categorization. |
+| `tool_groups` | Yes | Array of tool groups, each with a `name`, `hint`, and `tools` list. |
+| `renderer_names` | Yes | List of renderer names this plugin provides. |
+
+When `registry_index` is omitted, MCPViews auto-derives an equivalent index by grouping tools by their mapped renderer name, title-casing the group names, and using truncated tool descriptions from the tool cache as hints.
 
 ### renderer_definitions (Required for Agent Usability)
 
@@ -617,6 +656,23 @@ A full-featured plugin manifest with all optional fields:
     "search_files": "search_results",
     "get_overview": "module_overview",
     "custom_report": "acme_report"
+  },
+  "registry_index": {
+    "summary": "ACME code analysis with custom reporting",
+    "tags": ["code-analysis", "reporting"],
+    "tool_groups": [
+      {
+        "name": "Analysis",
+        "hint": "Analyze code and generate reports",
+        "tools": ["analyze_code", "custom_report"]
+      },
+      {
+        "name": "Search",
+        "hint": "Search files and get project overview",
+        "tools": ["search_files", "get_overview"]
+      }
+    ],
+    "renderer_names": ["code_units", "search_results", "module_overview", "acme_report"]
   },
   "renderer_definitions": [
     {

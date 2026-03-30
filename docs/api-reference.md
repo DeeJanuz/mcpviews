@@ -600,6 +600,12 @@ Initialize MCPViews for the current session. Returns current renderer definition
 {
   "rules": [
     {
+      "name": "renderer_selection",
+      "category": "system",
+      "source": "built-in",
+      "rule": "When displaying content in MCPViews, choose the renderer based on data shape..."
+    },
+    {
       "name": "rich_content_usage",
       "category": "renderer",
       "source": "built-in",
@@ -621,20 +627,67 @@ Initialize MCPViews for the current session. Returns current renderer definition
     }
   ],
   "persistence_instructions": "Persist each rule as a memory file...",
-  "available_tools": [
+  "plugin_registry": [
     {
-      "name": "push_content",
-      "description": "Display content in the MCPViews window."
-    },
-    {
-      "name": "push_review",
-      "description": "Display content and block until review."
+      "name": "my-plugin",
+      "summary": "my-plugin plugin",
+      "tags": ["search-results", "code-units"],
+      "tool_groups": [
+        {
+          "name": "Search Results",
+          "hint": "Search the codebase for matching code snippets...",
+          "tools": ["search_codebase", "vector_search"]
+        }
+      ],
+      "renderers": ["search_results", "code_units"]
     }
   ]
 }
 ```
 
-The `available_tools` array contains lightweight summaries (name and description only) of all MCP tools currently registered. This ensures the LLM knows what tools exist even on platforms with deferred tool loading that may not surface all tools via discovery.
+The `rules` array now contains only built-in (universal) rules -- the `renderer_selection` system rule and rules for universal-scope renderers. Plugin-specific rules are fetched on-demand via `get_plugin_docs`.
+
+The `plugin_registry` array is a compact index of installed plugins, listing their tool groups, renderer names, and tags. Agents use this to identify which plugin to query for detailed docs, then call `get_plugin_docs` with the plugin name and optional filters.
+
+### `get_plugin_docs`
+
+Fetch detailed usage docs for a plugin's tools and renderers. Call after `init_session` identifies which plugin you need. Returns plugin-specific renderer rules and tool rules, optionally filtered by group, tool, or renderer name.
+
+**Parameters:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `plugin` | string | Yes | Plugin name (e.g., `"ludflow"`, `"decidr"`). |
+| `groups` | string[] | No | Specific tool group names to fetch (e.g., `["Search", "Code Analysis"]`). Group names come from `plugin_registry[].tool_groups[].name` in the `init_session` response. |
+| `tools` | string[] | No | Specific tool names to fetch, unprefixed (e.g., `["search_codebase"]`). |
+| `renderers` | string[] | No | Specific renderer names to fetch (e.g., `["code_units", "search_results"]`). |
+
+When `groups` is provided, the group names are expanded to their constituent tool names. When multiple filters are provided, their tool sets are merged. When no filters are provided, all plugin rules are returned.
+
+**Response:**
+```json
+{
+  "plugin": "my-plugin",
+  "rules": [
+    {
+      "name": "search_results_usage",
+      "category": "renderer",
+      "source": "plugin",
+      "renderer": "search_results",
+      "description": "Search output",
+      "scope": "tool",
+      "data_hint": "{ results: [...] }",
+      "tools": ["search_codebase"]
+    },
+    {
+      "name": "tp__search_codebase_usage",
+      "category": "tool",
+      "source": "my-plugin",
+      "tool": "tp__search_codebase",
+      "rule": "Use search for queries."
+    }
+  ]
+}
+```
 
 ### `mcpviews_install_plugin`
 
@@ -677,11 +730,7 @@ One-time setup for MCPViews. Returns instructions for persisting a rule that ens
   "rules": [ ... ],
   "plugin_status": [ ... ],
   "persistence_instructions": "Persist each rule as a memory file...",
-  "setup_instructions": "Add a rule in `.claude/rules/mcpviews-init.md` containing: ...",
-  "available_tools": [
-    { "name": "push_content", "description": "Display content in the MCPViews window." },
-    { "name": "push_review", "description": "Display content and block until review." }
-  ]
+  "setup_instructions": "Add a rule in `.claude/rules/mcpviews-init.md` containing: ..."
 }
 ```
 

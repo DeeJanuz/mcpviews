@@ -1,7 +1,7 @@
 # Technical Debt & Enhancement Log
 
 **Last Updated:** 2026-03-30
-**Total Active Issues:** 4
+**Total Active Issues:** 5
 **Resolved This Month:** 42
 
 ---
@@ -18,6 +18,7 @@ _None_
 
 ### Medium
 
+- **M-024:** `mcp_tools.rs` is 2184 lines with 7+ responsibilities (tool dispatch, rule collection, registry building, session gathering, plugin proxy, auth status, tool definitions) -- the new `collect_builtin_rules`, `collect_plugin_rules`, `build_plugin_registry`, `auto_derive_registry_index`, and `gather_slim_session_data` functions should be extracted into a dedicated `rules.rs` or `session.rs` module. _(Commit ce2de40)_
 - **M-022:** Duplicated auth-lookup block in `commands.rs` -- `get_plugin_auth_header` (lines 262-274) and `start_plugin_auth` (lines 203-215) contain identical 12-line pattern: lock registry, find manifest by name, extract auth config. Extract to `resolve_plugin_auth(state, plugin_name) -> Result<PluginAuth, String>` helper. _(Commit 2565475)_
 - **M-023:** No test coverage for `get_plugin_auth_header` command -- function has 3 code paths (stored token, OAuth refresh, no token error) with no tests. Prior commit (8e9fc5f) established the pattern of testing new commands. _(Commit 2565475)_
 
@@ -118,6 +119,7 @@ _None_
 
 | Commit | Date | Score | Rating |
 |--------|------|-------|--------|
+| ce2de40 | 2026-03-30 | 75/100 | Good |
 | c5f6d1c | 2026-03-30 | 82/100 | Good |
 | ec4a811 | 2026-03-30 | 78/100 | Good |
 | 85c3c5d | 2026-03-30 | 80/100 | Good |

@@ -38,6 +38,7 @@ A plugin manifest is a JSON file with the following structure:
 | `renderer_definitions` | RendererDef[] | **Recommended** | Structured renderer definitions with payload schemas for agent discovery. Each entry defines a renderer's name, description, scope, associated tools, data schema hint, and optional behavioral rule. Without these, agents can discover renderer names (via auto-discovery from the `renderers` map) but won't know how to construct payloads. See [Agent Discovery](#agent-discovery) below. |
 | `tool_rules` | object | No | Map of tool names to behavioral rule strings. These rules are returned by the `init_session` and `mcpviews_setup` MCP tools so agents can persist them for guided tool usage. Tool names are automatically prefixed with the plugin's `tool_prefix`. |
 | `no_auto_push` | string[] | No | **Deprecated.** Previously controlled which tools skipped auto-push. Auto-push has been removed entirely -- pushes now only happen via explicit `push_content`/`push_review` calls. Field is still accepted for backward compatibility but has no effect. |
+| `registry_index` | object | No | Pre-authored compact index for the `init_session` plugin registry. Contains `summary` (string), `tags` (string[]), `tool_groups` (ToolGroupEntry[]), and `renderer_names` (string[]). If omitted, MCPViews auto-derives the index from the `renderers` map and tool cache. |
 | `mcp` | object | No | MCP server connection configuration. If omitted, the plugin provides renderers only (no remote tools). |
 
 ### RendererDef
@@ -65,6 +66,14 @@ Structured renderer definition used for agent rule bootstrapping via the `init_s
 | `rule` | string | No | Behavioral rule text returned by `init_session`/`mcpviews_setup` for agent persistence. |
 
 ### Agent Discovery
+
+MCPViews uses a two-tier lazy-loading approach for plugin documentation:
+
+1. **`init_session`** returns only built-in (universal) rules and a compact `plugin_registry` index listing each plugin's name, summary, tags, tool groups, and renderer names. This keeps session-start token usage minimal.
+
+2. **`get_plugin_docs`** fetches detailed rules for a specific plugin on-demand, with optional filters by tool group, tool name, or renderer name. Agents call this when they need to use a plugin's tools or renderers.
+
+The `plugin_registry` index is either read from the manifest's `registry_index` field (if provided) or auto-derived from the `renderers` map and tool cache. Auto-derivation groups tools by their mapped renderer, title-cases the group names, and uses truncated tool descriptions as hints.
 
 MCPViews automatically discovers plugin renderers by reading the `renderers` map and enriching entries with tool metadata from the MCP tool cache. This gives agents the renderer names and tool associations without any extra plugin configuration.
 
