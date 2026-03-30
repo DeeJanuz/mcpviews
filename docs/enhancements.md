@@ -1,7 +1,7 @@
 # Technical Debt & Enhancement Log
 
 **Last Updated:** 2026-03-30
-**Total Active Issues:** 3
+**Total Active Issues:** 4
 **Resolved This Month:** 42
 
 ---
@@ -24,6 +24,7 @@ _None_
 ### Low
 
 - **L-019:** No test coverage for auto-parse logic in `call_push_impl` (`mcp_tools.rs` lines 213-223) -- the string-to-object coercion has 3 code paths (non-string passthrough, valid JSON string parsed, invalid string fallback) with no tests. Extract the coercion into a helper like `normalize_data_param(raw: &Value) -> Value` for testability. _(Commit ec4a811)_
+- **L-020:** No test coverage for `set_native_theme` command (`commands.rs`) -- function has 3 code paths (dark, light, unrecognized string) with no tests. Codebase convention (established in commit 8e9fc5f) is to test new Tauri commands. _(Commit c5f6d1c)_
 
 ---
 
@@ -117,6 +118,7 @@ _None_
 
 | Commit | Date | Score | Rating |
 |--------|------|-------|--------|
+| c5f6d1c | 2026-03-30 | 82/100 | Good |
 | ec4a811 | 2026-03-30 | 78/100 | Good |
 | 85c3c5d | 2026-03-30 | 80/100 | Good |
 | c2070b7 | 2026-03-29 | 82/100 | Good |
