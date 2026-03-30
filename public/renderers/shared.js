@@ -5,12 +5,12 @@
   'use strict';
 
   const CITATION_COLORS = {
-    doc:  { hex: '#2563eb', label: 'Document',        css: 'cite-doc' },
-    code: { hex: '#7c3aed', label: 'Code',            css: 'cite-code' },
-    dg:   { hex: '#059669', label: 'Data Governance',  css: 'cite-dg' },
-    api:  { hex: '#d97706', label: 'API Endpoint',     css: 'cite-api' },
-    kdex: { hex: '#0d9488', label: 'Knowledge Dex',    css: 'cite-kdex' },
-    dl:   { hex: '#0284c7', label: 'Data Lake',        css: 'cite-dl' },
+    doc:  { hex: '#2563eb', bg: 'var(--cite-doc-bg)',  label: 'Document',        css: 'cite-doc' },
+    code: { hex: '#7c3aed', bg: 'var(--cite-code-bg)', label: 'Code',            css: 'cite-code' },
+    dg:   { hex: '#059669', bg: 'var(--cite-dg-bg)',   label: 'Data Governance',  css: 'cite-dg' },
+    api:  { hex: '#d97706', bg: 'var(--cite-api-bg)',  label: 'API Endpoint',     css: 'cite-api' },
+    kdex: { hex: '#0d9488', bg: 'var(--cite-kdex-bg)', label: 'Knowledge Dex',    css: 'cite-kdex' },
+    dl:   { hex: '#0284c7', bg: 'var(--cite-dl-bg)',   label: 'Data Lake',        css: 'cite-dl' },
   };
 
   function escapeHtml(str) {
@@ -124,14 +124,14 @@
   }
 
   function createStatusBadge(status) {
-    if (status === 'PUBLISHED') return createBadge('PUBLISHED', '#dcfce7', '#166534');
-    if (status === 'DRAFT') return createBadge('DRAFT', '#fef9c3', '#854d0e');
-    return createBadge(status || 'UNKNOWN', '#f3f4f6', '#737373');
+    if (status === 'PUBLISHED') return createBadge('PUBLISHED', 'var(--color-success-bg)', 'var(--color-success-text)');
+    if (status === 'DRAFT') return createBadge('DRAFT', 'var(--color-warning-bg)', 'var(--color-warning-text)');
+    return createBadge(status || 'UNKNOWN', 'var(--bg-surface-inset)', 'var(--text-secondary)');
   }
 
   function createScopeBadge(scope) {
-    if (scope === 'ORGANIZATIONAL') return createBadge('ORG', '#dbeafe', '#1e40af');
-    return createBadge('PERSONAL', '#fef9c3', '#854d0e');
+    if (scope === 'ORGANIZATIONAL') return createBadge('ORG', 'var(--color-info-bg)', 'var(--color-info-text)');
+    return createBadge('PERSONAL', 'var(--color-warning-bg)', 'var(--color-warning-text)');
   }
 
   /**
@@ -207,11 +207,11 @@
 
   // HTTP method colors — shared across search results and citation panel
   var HTTP_METHOD_COLORS = {
-    GET:    { bg: '#dcfce7', text: '#166534', hex: '#22c55e' },
-    POST:   { bg: '#dbeafe', text: '#1e40af', hex: '#3b82f6' },
-    PUT:    { bg: '#fef9c3', text: '#854d0e', hex: '#eab308' },
-    PATCH:  { bg: '#ffedd5', text: '#9a3412', hex: '#f97316' },
-    DELETE: { bg: '#fee2e2', text: '#991b1b', hex: '#ef4444' }
+    GET:    { bg: 'var(--color-success-bg)', text: 'var(--color-success-text)', hex: 'var(--color-success)' },
+    POST:   { bg: 'var(--color-info-bg)',    text: 'var(--color-info-text)',    hex: 'var(--color-info)' },
+    PUT:    { bg: 'var(--color-warning-bg)',  text: 'var(--color-warning-text)', hex: 'var(--color-warning)' },
+    PATCH:  { bg: 'var(--color-warning-bg)',  text: 'var(--color-warning-text)', hex: 'var(--color-warning)' },
+    DELETE: { bg: 'var(--color-error-bg)',    text: 'var(--color-error-text)',   hex: 'var(--color-error)' }
   };
 
   /**

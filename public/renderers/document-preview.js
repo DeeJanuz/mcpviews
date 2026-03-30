@@ -68,7 +68,7 @@
                   var previousDoc = doc;
                   container.innerHTML = '';
                   var backBtn = utils.createButton('\u2190 Back', {
-                    bg: '#f3f4f6', color: '#171717',
+                    bg: 'var(--bg-surface-inset)', color: 'var(--text-primary)',
                     onclick: function () {
                       container.innerHTML = '';
                       renderSingleDocument(container, previousDoc, utils);
@@ -105,7 +105,7 @@
       // Card list for multiple documents
       var header = document.createElement('div');
       header.className = 'doc-list-header';
-      header.appendChild(utils.createBadge(docs.length + ' documents', '#f3f4f6', '#171717'));
+      header.appendChild(utils.createBadge(docs.length + ' documents', 'var(--bg-surface-inset)', 'var(--text-primary)'));
       container.appendChild(header);
 
       docs.forEach(function (doc) {
@@ -173,8 +173,8 @@
                 container.innerHTML = '';
 
                 var backBtn = utils.createButton('\u2190 Back to list', {
-                  bg: '#f3f4f6',
-                  color: '#171717',
+                  bg: 'var(--bg-surface-inset)',
+                  color: 'var(--text-primary)',
                   onclick: function () {
                     renderDocumentPreview(container, data, meta, toolArgs, onDecision);
                   }
@@ -459,7 +459,7 @@
     summaryBar.innerHTML = '';
 
     var totalSpan = document.createElement('span');
-    totalSpan.style.color = '#171717';
+    totalSpan.style.color = 'var(--text-primary)';
     totalSpan.innerHTML = '<span class="count">' + opSegments.length + '</span> operations';
     summaryBar.appendChild(totalSpan);
 
@@ -605,7 +605,7 @@
         if (decLabel) {
           decLabel.style.display = 'block';
           decLabel.textContent = 'Accepted \u2713';
-          decLabel.style.color = '#16a34a';
+          decLabel.style.color = 'var(--color-success-text)';
         }
         if (acceptBtn) acceptBtn.style.display = 'none';
         if (rejectBtn) {
@@ -618,7 +618,7 @@
         if (decLabel) {
           decLabel.style.display = 'block';
           decLabel.textContent = 'Rejected \u2717';
-          decLabel.style.color = '#dc2626';
+          decLabel.style.color = 'var(--color-error-text)';
         }
         if (rejectBtn) rejectBtn.style.display = 'none';
         if (acceptBtn) {
@@ -700,7 +700,7 @@
       bulkRow.className = 'doc-bulk-row';
 
       var acceptAllBtn = utils.createButton('Accept All', {
-        bg: '#dcfce7', color: '#166534',
+        bg: 'var(--color-success-bg)', color: 'var(--color-success-text)',
         onclick: function () {
           for (var i = 0; i < opSegments.length; i++) {
             state.decisions[opSegments[i].operationId] = 'accepted';
@@ -711,7 +711,7 @@
       bulkRow.appendChild(acceptAllBtn);
 
       var rejectAllBtn = utils.createButton('Reject All', {
-        bg: '#fee2e2', color: '#991b1b',
+        bg: 'var(--color-error-bg)', color: 'var(--color-error-text)',
         onclick: function () {
           for (var i = 0; i < opSegments.length; i++) {
             state.decisions[opSegments[i].operationId] = 'rejected';
@@ -737,7 +737,7 @@
 
     // Add submit button to summary row
     var submitBtn = utils.createButton('Submit', {
-      bg: '#2563eb', color: '#ffffff',
+      bg: 'var(--accent-primary)', color: 'var(--text-inverse)',
       onclick: function () {
         var currentSessionId = meta && meta.sessionId;
         var commentPayload = {};

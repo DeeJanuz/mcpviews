@@ -1,7 +1,7 @@
 # Technical Debt & Enhancement Log
 
 **Last Updated:** 2026-03-30
-**Total Active Issues:** 2
+**Total Active Issues:** 3
 **Resolved This Month:** 42
 
 ---
@@ -23,7 +23,7 @@ _None_
 
 ### Low
 
-_None_
+- **L-019:** No test coverage for auto-parse logic in `call_push_impl` (`mcp_tools.rs` lines 213-223) -- the string-to-object coercion has 3 code paths (non-string passthrough, valid JSON string parsed, invalid string fallback) with no tests. Extract the coercion into a helper like `normalize_data_param(raw: &Value) -> Value` for testability. _(Commit ec4a811)_
 
 ---
 
@@ -117,6 +117,7 @@ _None_
 
 | Commit | Date | Score | Rating |
 |--------|------|-------|--------|
+| ec4a811 | 2026-03-30 | 78/100 | Good |
 | 85c3c5d | 2026-03-30 | 80/100 | Good |
 | c2070b7 | 2026-03-29 | 82/100 | Good |
 | aa0c85d | 2026-03-29 | 78/100 | Good |

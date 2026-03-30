@@ -511,6 +511,16 @@ pub fn get_renderer_registry(state: State<'_, Arc<AppState>>) -> Vec<serde_json:
     collect_invocable_renderers(&registry.manifests)
 }
 
+#[tauri::command]
+pub fn set_native_theme(theme: String, window: tauri::Window) -> Result<(), String> {
+    let native_theme = match theme.as_str() {
+        "dark" => Some(tauri::Theme::Dark),
+        "light" => Some(tauri::Theme::Light),
+        _ => None,
+    };
+    window.set_theme(native_theme).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

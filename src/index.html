@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
   <title>MCPViews</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -43,6 +44,15 @@
     html.setAttribute('data-theme', 'dark');
   }
 
+  function syncNativeTheme(theme) {
+    if (window.__TAURI_INTERNALS__) {
+      window.__TAURI_INTERNALS__.invoke('set_native_theme', { theme: theme }).catch(function() {});
+    }
+  }
+
+  // Sync native window theme on initial load
+  syncNativeTheme(html.getAttribute('data-theme') || 'light');
+
   document.addEventListener('DOMContentLoaded', function() {
     var toggle = document.getElementById('theme-toggle');
     if (toggle) {
@@ -51,6 +61,7 @@
         var next = current === 'dark' ? 'light' : 'dark';
         html.setAttribute('data-theme', next);
         localStorage.setItem('mcpviews-theme', next);
+        syncNativeTheme(next);
         if (typeof mermaid !== 'undefined') {
           mermaid.initialize({ startOnLoad: false, theme: next === 'dark' ? 'dark' : 'default', securityLevel: 'loose', suppressErrorRendering: true });
         }
@@ -65,6 +76,7 @@
         if (!localStorage.getItem('mcpviews-theme')) {
           var theme = e.matches ? 'dark' : 'light';
           html.setAttribute('data-theme', theme);
+          syncNativeTheme(theme);
           if (typeof mermaid !== 'undefined') {
             mermaid.initialize({ startOnLoad: false, theme: theme === 'dark' ? 'dark' : 'default', securityLevel: 'loose', suppressErrorRendering: true });
           }

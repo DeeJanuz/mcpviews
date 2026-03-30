@@ -160,6 +160,7 @@ fn main() {
             commands::clear_plugin_auth,
             commands::save_file,
             commands::get_renderer_registry,
+            commands::set_native_theme,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -196,6 +197,7 @@ fn main() {
                 .title("MCPViews")
                 .inner_size(1200.0, 800.0)
                 .resizable(true)
+                .theme(Some(tauri::Theme::Light))
                 .on_web_resource_request(csp_request_hook(app_state.clone()))
                 .build()?;
 

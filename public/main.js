@@ -418,9 +418,9 @@
       return renderers[contentType];
     }
     return function renderError(container) {
-      container.innerHTML = '<div style="color:#ef4444;padding:32px;text-align:center;">' +
+      container.innerHTML = '<div style="color:var(--color-error);padding:32px;text-align:center;">' +
         '<h3>No renderer for content type: ' + (contentType || 'unknown') + '</h3>' +
-        '<p style="color:#737373;">This tool needs a renderer added to the UI.</p></div>';
+        '<p style="color:var(--text-secondary);">This tool needs a renderer added to the UI.</p></div>';
     };
   }
 

@@ -33,7 +33,7 @@
 
     var titleSpan = document.createElement('span');
     titleSpan.className = 'cite-panel-title';
-    titleSpan.appendChild(utils.createBadge(color.label, color.hex + '20', color.hex));
+    titleSpan.appendChild(utils.createBadge(color.label, color.bg, color.hex));
 
     var displayName = data.name || data.title || data.tableName || data.path || '';
     if (displayName) {
@@ -83,12 +83,13 @@
     // Unit type + exported + complexity badges
     var badgeRow = document.createElement('div');
     badgeRow.className = 'cite-panel-badge-row';
-    if (data.unit_type) badgeRow.appendChild(utils.createBadge(data.unit_type.toUpperCase(), '#7c3aed20', '#a78bfa'));
-    if (data.exported) badgeRow.appendChild(utils.createBadge('EXPORTED', '#dcfce7', '#166534'));
+    if (data.unit_type) badgeRow.appendChild(utils.createBadge(data.unit_type.toUpperCase(), 'var(--cite-code-bg)', 'var(--cite-code)'));
+    if (data.exported) badgeRow.appendChild(utils.createBadge('EXPORTED', 'var(--color-success-bg)', 'var(--color-success-text)'));
     if (data.complexity) {
       var level = data.complexity <= 5 ? 'LOW' : data.complexity <= 15 ? 'MEDIUM' : 'HIGH';
-      var cColor = data.complexity <= 5 ? '#22c55e' : data.complexity <= 15 ? '#eab308' : '#ef4444';
-      badgeRow.appendChild(utils.createBadge('COMPLEXITY: ' + data.complexity + ' (' + level + ')', cColor + '20', cColor));
+      var cBg = data.complexity <= 5 ? 'var(--color-success-bg)' : data.complexity <= 15 ? 'var(--color-warning-bg)' : 'var(--color-error-bg)';
+      var cText = data.complexity <= 5 ? 'var(--color-success-text)' : data.complexity <= 15 ? 'var(--color-warning-text)' : 'var(--color-error-text)';
+      badgeRow.appendChild(utils.createBadge('COMPLEXITY: ' + data.complexity + ' (' + level + ')', cBg, cText));
     }
     body.appendChild(badgeRow);
 
@@ -115,7 +116,7 @@
       patDiv.className = 'cite-panel-badge-row';
       patDiv.style.marginTop = '12px';
       data.patterns.forEach(function (p) {
-        patDiv.appendChild(utils.createBadge(typeof p === 'string' ? p : (p.name || String(p)), '#f3f4f6', '#525252'));
+        patDiv.appendChild(utils.createBadge(typeof p === 'string' ? p : (p.name || String(p)), 'var(--bg-surface-inset)', 'var(--text-secondary)'));
       });
       body.appendChild(patDiv);
     }
@@ -191,7 +192,7 @@
         if (tableData.dataSource && tableData.dataSource.sourceType) {
           var typeBadge = document.createElement('div');
           typeBadge.className = 'cite-panel-spacer-badge';
-          typeBadge.appendChild(utils.createBadge(tableData.dataSource.sourceType, '#f3f4f6', '#525252'));
+          typeBadge.appendChild(utils.createBadge(tableData.dataSource.sourceType, 'var(--bg-surface-inset)', 'var(--text-secondary)'));
           body.appendChild(typeBadge);
         }
 
@@ -257,7 +258,7 @@
       var tdPk = document.createElement('td');
       tdPk.className = 'cite-panel-td cite-panel-td-center';
       if (col.isPrimaryKey || col.is_primary_key) {
-        tdPk.appendChild(utils.createBadge('PK', '#fef3c7', '#92400e'));
+        tdPk.appendChild(utils.createBadge('PK', 'var(--color-warning-bg)', 'var(--color-warning-text)'));
       }
       tr.appendChild(tdPk);
 
@@ -300,8 +301,8 @@
     methodRow.className = 'cite-panel-method-row';
 
     var method = (data.method || 'GET').toUpperCase();
-    var mColor = utils.HTTP_METHOD_COLORS[method] || { hex: '#9ca3af', bg: '#f3f4f6', text: '#525252' };
-    methodRow.appendChild(utils.createBadge(method, mColor.bg || (mColor.hex + '20'), mColor.text || mColor.hex));
+    var mColor = utils.HTTP_METHOD_COLORS[method] || { hex: 'var(--text-secondary)', bg: 'var(--bg-surface-inset)', text: 'var(--text-secondary)' };
+    methodRow.appendChild(utils.createBadge(method, mColor.bg, mColor.text));
 
     var pathSpan = document.createElement('span');
     pathSpan.className = 'cite-panel-mono-path';
@@ -331,9 +332,10 @@
     // Scope badge
     var scope = data.scope || '';
     if (scope) {
-      var scopeColor = scope === 'ORGANIZATIONAL' ? '#059669' : '#6366f1';
+      var scopeBg = scope === 'ORGANIZATIONAL' ? 'var(--color-success-bg)' : 'var(--cite-code-bg)';
+      var scopeText = scope === 'ORGANIZATIONAL' ? 'var(--color-success)' : 'var(--accent-primary)';
       var scopeLabel = scope === 'ORGANIZATIONAL' ? 'Organization' : 'Personal';
-      body.appendChild(utils.createBadge(scopeLabel, scopeColor + '20', scopeColor));
+      body.appendChild(utils.createBadge(scopeLabel, scopeBg, scopeText));
       var spacer = document.createElement('div');
       spacer.className = 'cite-panel-spacer-sm';
       body.appendChild(spacer);
