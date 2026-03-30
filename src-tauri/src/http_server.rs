@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Extension, Json},
+    extract::{Extension, Json, Query},
     http::{HeaderMap, Method, StatusCode},
     response::{
         sse::{Event, KeepAlive, Sse},
@@ -397,6 +397,89 @@ async fn reload_plugins_handler(
     StatusCode::OK
 }
 
+// ---------------------------------------------------------------------------
+// Mock OAuth endpoints – satisfies Claude Code's HTTP transport auth handshake
+// without requiring real authentication.
+// ---------------------------------------------------------------------------
+
+const BASE_URL: &str = "http://localhost:4200";
+
+/// GET /.well-known/oauth-protected-resource  (RFC 9728)
+async fn oauth_protected_resource() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "resource": BASE_URL,
+        "authorization_servers": [BASE_URL]
+    }))
+}
+
+/// GET /.well-known/oauth-authorization-server  (RFC 8414)
+async fn oauth_authorization_server() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "issuer": BASE_URL,
+        "authorization_endpoint": format!("{}/oauth/authorize", BASE_URL),
+        "token_endpoint": format!("{}/oauth/token", BASE_URL),
+        "registration_endpoint": format!("{}/oauth/register", BASE_URL),
+        "response_types_supported": ["code"],
+        "grant_types_supported": ["authorization_code", "refresh_token"],
+        "code_challenge_methods_supported": ["S256"],
+        "token_endpoint_auth_methods_supported": ["none"]
+    }))
+}
+
+/// POST /oauth/register – dynamic client registration (mock)
+#[derive(Deserialize, Default)]
+struct RegisterRequest {
+    #[serde(default)]
+    redirect_uris: Vec<String>,
+    // Ignore all other fields from the request body
+    #[serde(flatten)]
+    _extra: serde_json::Value,
+}
+
+async fn oauth_register(
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    let req: RegisterRequest = serde_json::from_slice(&body).unwrap_or_default();
+    Json(serde_json::json!({
+        "client_id": "mcpviews-mock-client",
+        "client_name": "MCPViews Mock Client",
+        "redirect_uris": req.redirect_uris,
+        "grant_types": ["authorization_code", "refresh_token"],
+        "response_types": ["code"],
+        "token_endpoint_auth_method": "none"
+    }))
+}
+
+/// GET /oauth/authorize – immediately redirects with a mock auth code (302 Found)
+async fn oauth_authorize(
+    Query(params): Query<HashMap<String, String>>,
+) -> Result<impl IntoResponse, (StatusCode, &'static str)> {
+    let redirect_uri = params
+        .get("redirect_uri")
+        .ok_or((StatusCode::BAD_REQUEST, "missing redirect_uri"))?;
+    let state = params.get("state").map(|s| s.as_str()).unwrap_or("");
+
+    let sep = if redirect_uri.contains('?') { "&" } else { "?" };
+    let location = format!(
+        "{}{}code=mcpviews-mock-code&state={}",
+        redirect_uri, sep, state
+    );
+    Ok((
+        StatusCode::FOUND,
+        [(axum::http::header::LOCATION, location)],
+    ))
+}
+
+/// POST /oauth/token – returns a mock access token
+async fn oauth_token() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "access_token": "mcpviews-mock-token",
+        "token_type": "bearer",
+        "expires_in": 86400,
+        "scope": "mcp"
+    }))
+}
+
 pub async fn start_http_server(app_state: Arc<AppState>, app_handle: AppHandle, std_listener: std::net::TcpListener) {
     eprintln!("[mcpviews] Starting HTTP server on :4200");
     let _ = get_start_info(); // Initialize start time
@@ -423,15 +506,14 @@ pub async fn start_http_server(app_state: Arc<AppState>, app_handle: AppHandle, 
                 .post(mcp_post_handler)
                 .delete(mcp_delete_handler),
         )
-        // Return JSON 404 for OAuth discovery — MCPViews doesn't use OAuth auth.
-        // Claude Code's HTTP transport client probes this endpoint and expects
-        // a parseable JSON response; axum's default plain-text 404 causes a parse error.
-        .route(
-            "/.well-known/oauth-authorization-server",
-            get(|| async {
-                (StatusCode::NOT_FOUND, axum::Json(serde_json::json!({"error": "not_found"})))
-            }),
-        )
+        // Mock OAuth endpoints – Claude Code's HTTP transport probes these during
+        // connection setup.  We return valid metadata so the handshake completes
+        // instantly without real authentication.
+        .route("/.well-known/oauth-protected-resource", get(oauth_protected_resource))
+        .route("/.well-known/oauth-authorization-server", get(oauth_authorization_server))
+        .route("/oauth/register", post(oauth_register))
+        .route("/oauth/authorize", get(oauth_authorize))
+        .route("/oauth/token", post(oauth_token))
         .layer(cors)
         .layer(Extension(async_state));
 
@@ -527,6 +609,101 @@ mod tests {
 
         let result = resolve_content_type(&registry, "search_codebase");
         assert_eq!(result, "search_codebase");
+    }
+
+    // -----------------------------------------------------------------------
+    // Mock OAuth endpoint tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_oauth_protected_resource_response() {
+        let resp = oauth_protected_resource().await;
+        let json = resp.into_response();
+        let body = axum::body::to_bytes(json.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v["resource"], "http://localhost:4200");
+        assert_eq!(v["authorization_servers"][0], "http://localhost:4200");
+    }
+
+    #[tokio::test]
+    async fn test_oauth_authorization_server_response() {
+        let resp = oauth_authorization_server().await;
+        let json = resp.into_response();
+        let body = axum::body::to_bytes(json.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v["issuer"], "http://localhost:4200");
+        assert_eq!(v["authorization_endpoint"], "http://localhost:4200/oauth/authorize");
+        assert_eq!(v["token_endpoint"], "http://localhost:4200/oauth/token");
+        assert_eq!(v["registration_endpoint"], "http://localhost:4200/oauth/register");
+        assert_eq!(v["response_types_supported"][0], "code");
+        assert_eq!(v["grant_types_supported"][0], "authorization_code");
+        assert_eq!(v["grant_types_supported"][1], "refresh_token");
+        assert_eq!(v["code_challenge_methods_supported"][0], "S256");
+        assert_eq!(v["token_endpoint_auth_methods_supported"][0], "none");
+    }
+
+    #[tokio::test]
+    async fn test_oauth_register_echoes_redirect_uris() {
+        let body_bytes = axum::body::Bytes::from(
+            serde_json::to_vec(&serde_json::json!({
+                "redirect_uris": ["http://localhost:9999/callback"],
+                "client_name": "test"
+            })).unwrap()
+        );
+        let resp = oauth_register(body_bytes).await;
+        let json = resp.into_response();
+        let body = axum::body::to_bytes(json.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v["client_id"], "mcpviews-mock-client");
+        assert_eq!(v["redirect_uris"][0], "http://localhost:9999/callback");
+    }
+
+    #[tokio::test]
+    async fn test_oauth_register_empty_body() {
+        let body_bytes = axum::body::Bytes::from(b"{}".to_vec());
+        let resp = oauth_register(body_bytes).await;
+        let json = resp.into_response();
+        let body = axum::body::to_bytes(json.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v["client_id"], "mcpviews-mock-client");
+        assert!(v["redirect_uris"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_oauth_authorize_redirects() {
+        let mut params = HashMap::new();
+        params.insert("redirect_uri".to_string(), "http://localhost:9999/cb".to_string());
+        params.insert("state".to_string(), "abc123".to_string());
+        let result = oauth_authorize(Query(params)).await;
+        assert!(result.is_ok());
+        let resp = result.unwrap().into_response();
+        assert_eq!(resp.status(), StatusCode::FOUND);
+        let location = resp.headers().get("location").unwrap().to_str().unwrap();
+        assert!(location.contains("code=mcpviews-mock-code"));
+        assert!(location.contains("state=abc123"));
+        assert!(location.starts_with("http://localhost:9999/cb?"));
+    }
+
+    #[tokio::test]
+    async fn test_oauth_authorize_missing_redirect_uri() {
+        let params: HashMap<String, String> = HashMap::new();
+        let result = oauth_authorize(Query(params)).await;
+        match result {
+            Err((status, _msg)) => assert_eq!(status, StatusCode::BAD_REQUEST),
+            Ok(_) => panic!("expected Err for missing redirect_uri"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_oauth_token_response() {
+        let resp = oauth_token().await;
+        let json = resp.into_response();
+        let body = axum::body::to_bytes(json.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v["access_token"], "mcpviews-mock-token");
+        assert_eq!(v["token_type"], "bearer");
+        assert_eq!(v["expires_in"], 86400);
+        assert_eq!(v["scope"], "mcp");
     }
 
     #[test]
