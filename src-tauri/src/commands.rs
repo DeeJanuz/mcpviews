@@ -410,15 +410,11 @@ pub async fn update_plugin(
     {
         let registry = state.plugin_registry.lock().unwrap();
         if let Some(installed) = registry.manifests.iter().find(|m| m.name == name) {
-            let installed_ver = semver::Version::parse(&installed.version).ok();
-            let available_ver = semver::Version::parse(&entry.version).ok();
-            if let (Some(iv), Some(av)) = (installed_ver, available_ver) {
-                if av <= iv {
-                    return Err(format!(
-                        "Plugin '{}' is already up to date (version {})",
-                        name, installed.version
-                    ));
-                }
+            if mcpviews_shared::newer_version(&installed.version, &entry.version).is_none() {
+                return Err(format!(
+                    "Plugin '{}' is already up to date (version {})",
+                    name, installed.version
+                ));
             }
         }
     }

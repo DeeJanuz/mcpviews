@@ -1,7 +1,7 @@
 # Technical Debt & Enhancement Log
 
 **Last Updated:** 2026-03-30
-**Total Active Issues:** 5
+**Total Active Issues:** 7
 **Resolved This Month:** 42
 
 ---
@@ -18,7 +18,9 @@ _None_
 
 ### Medium
 
-- **M-024:** `mcp_tools.rs` is 2184 lines with 7+ responsibilities (tool dispatch, rule collection, registry building, session gathering, plugin proxy, auth status, tool definitions) -- the new `collect_builtin_rules`, `collect_plugin_rules`, `build_plugin_registry`, `auto_derive_registry_index`, and `gather_slim_session_data` functions should be extracted into a dedicated `rules.rs` or `session.rs` module. _(Commit ce2de40)_
+- **M-025:** `ensure_registry_fresh` in `mcp_tools.rs` calls `fetch_all_registries` followed by `resolve_manifest_urls`, but `fetch_all_registries` already calls `resolve_manifest_urls` internally (registry.rs line 173). This double-resolves remote manifest URLs on every fresh fetch. Either remove the call in `ensure_registry_fresh` or remove the one inside `fetch_all_registries` and let all callers resolve explicitly. _(Commit 3b9f265)_
+- **M-026:** Version guard logic in `update_plugin` Tauri command (commands.rs:406-420) duplicates the comparison pattern from `collect_plugin_updates` (mcp_tools.rs). Extract a shared `is_update_available(installed: &str, available: &str) -> bool` helper. The test `test_version_guard_prevents_downgrade` also duplicates the logic inline rather than exercising the actual command. _(Commit 3b9f265)_
+- **M-024:** `mcp_tools.rs` is 2184+ lines with 8+ responsibilities (tool dispatch, rule collection, registry building, session gathering, plugin proxy, auth status, tool definitions, plugin update orchestration) -- this commit adds `call_update_plugins`, `ensure_registry_fresh`, and `collect_plugin_updates` (~80 more lines). Extract update-related functions into a `plugin_updates.rs` module. _(Commit ce2de40, worsened by 3b9f265)_
 - **M-022:** Duplicated auth-lookup block in `commands.rs` -- `get_plugin_auth_header` (lines 262-274) and `start_plugin_auth` (lines 203-215) contain identical 12-line pattern: lock registry, find manifest by name, extract auth config. Extract to `resolve_plugin_auth(state, plugin_name) -> Result<PluginAuth, String>` helper. _(Commit 2565475)_
 - **M-023:** No test coverage for `get_plugin_auth_header` command -- function has 3 code paths (stored token, OAuth refresh, no token error) with no tests. Prior commit (8e9fc5f) established the pattern of testing new commands. _(Commit 2565475)_
 
@@ -119,6 +121,7 @@ _None_
 
 | Commit | Date | Score | Rating |
 |--------|------|-------|--------|
+| 3b9f265 | 2026-03-30 | 78/100 | Good |
 | ce2de40 | 2026-03-30 | 75/100 | Good |
 | c5f6d1c | 2026-03-30 | 82/100 | Good |
 | ec4a811 | 2026-03-30 | 78/100 | Good |

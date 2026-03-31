@@ -163,12 +163,12 @@ async fn ensure_registry_fresh(state: &Arc<TokioMutex<AsyncAppState>>) {
     };
 
     let sources = mcpviews_shared::registry::get_registry_sources();
+    // fetch_all_registries already calls resolve_manifest_urls internally
     match mcpviews_shared::registry::fetch_all_registries(&client, &sources).await {
         Ok(entries) => {
-            let resolved = mcpviews_shared::registry::resolve_manifest_urls(&client, entries).await;
             let state_guard = state.lock().await;
             let mut cached = state_guard.inner.latest_registry.lock().unwrap();
-            *cached = resolved;
+            *cached = entries;
         }
         Err(e) => {
             eprintln!("[mcpviews] ensure_registry_fresh failed: {}", e);
@@ -773,17 +773,12 @@ fn collect_plugin_updates(
         .iter()
         .filter_map(|manifest| {
             let entry = registry_entries.iter().find(|e| e.name == manifest.name)?;
-            let installed = semver::Version::parse(&manifest.version).ok()?;
-            let available = semver::Version::parse(&entry.version).ok()?;
-            if available > installed {
-                Some(serde_json::json!({
-                    "name": manifest.name,
-                    "installed_version": manifest.version,
-                    "available_version": entry.version,
-                }))
-            } else {
-                None
-            }
+            let new_ver = mcpviews_shared::newer_version(&manifest.version, &entry.version)?;
+            Some(serde_json::json!({
+                "name": manifest.name,
+                "installed_version": manifest.version,
+                "available_version": new_ver,
+            }))
         })
         .collect()
 }

@@ -263,6 +263,15 @@ pub struct PluginInfo {
     pub update_available: Option<String>,
 }
 
+/// Returns the newer version string if `available` is strictly greater than
+/// `installed` (by semver). Returns `None` if versions are equal, installed is
+/// newer, or either string fails to parse.
+pub fn newer_version(installed: &str, available: &str) -> Option<String> {
+    let iv = semver::Version::parse(installed).ok()?;
+    let av = semver::Version::parse(available).ok()?;
+    if av > iv { Some(available.to_string()) } else { None }
+}
+
 pub fn plugins_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))

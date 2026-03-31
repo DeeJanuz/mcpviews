@@ -255,15 +255,7 @@ impl PluginRegistry {
                 let update_available = registry_entries
                     .iter()
                     .find(|e| e.name == manifest.name)
-                    .and_then(|e| {
-                        let installed = semver::Version::parse(&manifest.version).ok()?;
-                        let available = semver::Version::parse(&e.version).ok()?;
-                        if available > installed {
-                            Some(e.version.clone())
-                        } else {
-                            None
-                        }
-                    });
+                    .and_then(|e| mcpviews_shared::newer_version(&manifest.version, &e.version));
 
                 PluginInfo {
                     name: manifest.name.clone(),
