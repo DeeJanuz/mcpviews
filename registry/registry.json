@@ -3,15 +3,16 @@
   "plugins": [
     {
       "name": "ludflow",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "description": "Code analysis, documentation, and data governance powered by Ludflow",
       "author": "Ludflow",
       "homepage": "https://ludflow.com",
-      "download_url": "https://github.com/DeeJanuz/ludflow-mcpviews/releases/download/v0.2.0/ludflow-plugin.zip",
+      "manifest_url": "https://raw.githubusercontent.com/DeeJanuz/ludflow-mcpviews/master/manifest.json",
       "tags": ["code-analysis", "documentation", "data-governance", "knowledge-management"],
       "manifest": {
         "name": "ludflow",
-        "version": "0.2.0",
+        "version": "0.3.0",
+        "download_url": "https://github.com/DeeJanuz/ludflow-mcpviews/releases/download/v0.3.0/ludflow-plugin.zip",
         "renderers": {
           "search_codebase": "search_results",
           "vector_search": "search_results",
@@ -19,15 +20,15 @@
           "get_document": "document_preview",
           "write_document": "document_preview",
           "list_documents": "document_preview",
-          "get_data_schema": "data_schema",
-          "manage_data_draft": "data_draft_diff",
-          "get_data_lake_schema": "data_schema",
+          "get_data_schema": "structured_data",
+          "manage_data_draft": "structured_data",
+          "get_data_lake_schema": "structured_data",
           "get_dependencies": "dependencies",
           "get_file_content": "file_content",
           "get_module_overview": "module_overview",
           "get_analysis_stats": "analysis_stats",
-          "get_business_concepts": "knowledge_dex",
-          "manage_knowledge_entries": "knowledge_dex",
+          "get_business_concepts": "structured_data",
+          "manage_knowledge_entries": "structured_data",
           "get_column_context": "column_context"
         },
         "no_auto_push": [
@@ -43,6 +44,7 @@
           "url": "https://app.ludflow.com/api/mcp",
           "auth": {
             "type": "oauth",
+            "client_id": "fc99d041-1923-416c-8173-a4c02ae9b3a7",
             "auth_url": "https://app.ludflow.com/oauth/authorize",
             "token_url": "https://app.ludflow.com/oauth/token",
             "scopes": ["mcp:tools"]
