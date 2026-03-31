@@ -1,8 +1,8 @@
 # Technical Debt & Enhancement Log
 
 **Last Updated:** 2026-03-31
-**Total Active Issues:** 6
-**Resolved This Month:** 49
+**Total Active Issues:** 3
+**Resolved This Month:** 56
 
 ---
 
@@ -18,19 +18,23 @@ _None_
 
 ### Medium
 
-- **M-024:** `mcp_tools.rs` still has 8+ responsibilities (tool dispatch, rule collection, registry building, session gathering, plugin proxy, auth status, tool definitions, plugin update orchestration, registry browsing, plugin auth initiation) -- prompt code extracted to `mcp_prompts.rs` but registry/auth tools still need extraction into `registry_tools.rs`. _(Commit ce2de40, worsened by 3b9f265, 44e1f76; partially resolved 4d55dc6)_
-- **M-027:** No test coverage for `newer_version` helper in `shared/src/lib.rs` -- the function has 4 code paths (both valid + newer, both valid + equal/older, installed parse fails, available parse fails) with no tests. The existing `test_version_guard_prevents_downgrade` in `commands.rs` still duplicates comparison logic inline rather than exercising `newer_version` directly. _(Commit 846d72e)_
-- **M-028:** No async integration test coverage for `call_list_registry`, `call_start_plugin_auth`, `list_prompts`, or `get_prompt` -- tool definition tests and `builtin_prompt_definitions` test added in 4d55dc6, but the async functions themselves (~10 code paths) remain untested. _(Commit 44e1f76, partially addressed 4d55dc6)_
-- **M-023:** No test coverage for `get_plugin_auth_header` command -- function has 3 code paths (stored token, OAuth refresh, no token error) with no tests. Prior commit (8e9fc5f) established the pattern of testing new commands. _(Commit 2565475)_
+- **M-028:** No async integration test coverage for `list_prompts`, or `get_prompt` -- `build_registry_entries` and `resolve_builtin_prompt` now have pure-function tests (a36294a), but remaining async functions (~5 code paths) still need integration tests. _(Commit 44e1f76, partially addressed 4d55dc6, a36294a)_
+- **M-023:** No test coverage for `get_plugin_auth_header` command -- function has 3 code paths (stored token, OAuth refresh, no token error) with no tests. Requires integration test infrastructure. _(Commit 2565475)_
 
 ### Low
 
-- **L-019:** No test coverage for auto-parse logic in `call_push_impl` (`mcp_tools.rs` lines 213-223) -- the string-to-object coercion has 3 code paths (non-string passthrough, valid JSON string parsed, invalid string fallback) with no tests. Extract the coercion into a helper like `normalize_data_param(raw: &Value) -> Value` for testability. _(Commit ec4a811)_
-- **L-020:** No test coverage for `set_native_theme` command (`commands.rs`) -- function has 3 code paths (dark, light, unrecognized string) with no tests. Codebase convention (established in commit 8e9fc5f) is to test new Tauri commands. _(Commit c5f6d1c)_
+- **L-020:** No test coverage for `set_native_theme` command (`commands.rs`) -- function has 3 code paths (dark, light, unrecognized string) with no tests. Requires Tauri integration test infrastructure. _(Commit c5f6d1c)_
 
 ---
 
 ## Resolved Issues
+
+### Resolved 2026-03-31 (commit a36294a)
+
+- **M-024 (complete):** Extracted `call_list_registry` and `call_start_plugin_auth` from `mcp_tools.rs` into new `mcp_registry_tools.rs` module (~160 lines moved). Extracted `build_registry_entries` as a pure synchronous function with 7 unit tests. `mcp_tools.rs` dispatch now delegates to `crate::mcp_registry_tools`.
+- **M-027:** Added 5 unit tests for `newer_version` in `shared/src/lib.rs` covering all 4 code paths (newer available, same version, older available, invalid semver on either side).
+- **M-028 (partial):** `build_registry_entries` (7 tests) and `resolve_builtin_prompt` (3 tests) now tested as pure functions. Remaining async integration tests tracked under active M-028.
+- **L-019:** Extracted `normalize_data_param` helper from inline logic in `call_push_impl`, added 3 unit tests covering object passthrough, valid JSON string parsing, and invalid string fallback.
 
 ### Resolved 2026-03-31 (commit 4d55dc6)
 
@@ -132,6 +136,7 @@ _None_
 
 | Commit | Date | Score | Rating |
 |--------|------|-------|--------|
+| a36294a | 2026-03-31 | 92/100 | Excellent |
 | 4d55dc6 | 2026-03-31 | 88/100 | Good |
 | 44e1f76 | 2026-03-31 | 62/100 | Acceptable |
 | 7ed9962 | 2026-03-31 | 80/100 | Good |
