@@ -749,6 +749,82 @@ Install a plugin into MCPViews programmatically. Accepts a plugin manifest as JS
 - If a plugin with the same name is already installed, it is removed first and then re-added.
 - After installation, a `notifications/tools/list_changed` notification is broadcast to all MCP SSE sessions and a `reload_renderers` event is emitted to the WebView.
 
+### `list_registry`
+
+List all available plugins from the MCPViews registry, including install status, auth status, and available updates. Useful for guided plugin discovery workflows.
+
+**Parameters:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `tag` | string | No | Optional filter: only return plugins matching this tag. |
+
+**Response:**
+```json
+{
+  "content": [{
+    "type": "text",
+    "text": "{ \"plugins\": [...], \"total\": 3 }"
+  }]
+}
+```
+
+Each plugin entry includes:
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Plugin name. |
+| `description` | string | Plugin description. |
+| `version` | string | Registry version. |
+| `author` | string | Author name. |
+| `tags` | string[] | Plugin tags. |
+| `download_url` | string | ZIP download URL. |
+| `installed` | boolean | Whether the plugin is currently installed. |
+| `installed_version` | string | Installed version (if installed). |
+| `auth_type` | string | Auth type ("OAuth", "Bearer", "ApiKey") if installed. |
+| `auth_configured` | boolean | Whether auth is configured (only true if installed). |
+| `update_available` | string | Newer version string if an update exists. |
+
+### `start_plugin_auth`
+
+Start authentication for an installed plugin. For OAuth plugins, this opens the user's browser and waits for the redirect flow to complete. For Bearer/ApiKey plugins, this checks whether the required environment variable is set.
+
+**Parameters:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `plugin_name` | string | Yes | Name of the plugin to authenticate. |
+
+**Response (success):**
+```json
+{
+  "content": [{
+    "type": "text",
+    "text": "OAuth authentication for 'my-plugin' completed successfully."
+  }]
+}
+```
+
+**Error:** Returns an error string if the environment variable is not set (Bearer/ApiKey) or the OAuth flow fails.
+
+### `get_plugin_prompt`
+
+Fetch a prompt from a plugin. Returns the prompt content with optional template argument substitution. The returned content should be used as system instructions for a guided workflow.
+
+**Parameters:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `plugin` | string | Yes | Plugin name. |
+| `prompt` | string | Yes | Prompt name. |
+| `arguments` | object | No | Optional key-value arguments to template into the prompt. Replaces `{{key}}` placeholders in the prompt source. |
+
+**Response:**
+```json
+{
+  "content": [{
+    "type": "text",
+    "text": "The rendered prompt content..."
+  }]
+}
+```
+
 ### `mcpviews_setup`
 
 One-time setup for MCPViews. Returns instructions for persisting a rule that ensures `init_session` is called automatically at the start of every conversation, chat session, or interaction. Also returns current rules and plugin status.
@@ -767,6 +843,67 @@ One-time setup for MCPViews. Returns instructions for persisting a rule that ens
   "setup_instructions": "Add a rule in `.claude/rules/mcpviews-init.md` containing: ..."
 }
 ```
+
+## MCP Prompts
+
+MCPViews implements the MCP prompts protocol (`prompts/list` and `prompts/get`), enabling native prompt discovery by Claude Code and other MCP clients. Prompts are advertised in the `initialize` response via the `capabilities.prompts.listChanged` field.
+
+### `prompts/list`
+
+Returns all available prompts (built-in + plugin prompts).
+
+**Response:**
+```json
+{
+  "prompts": [
+    {
+      "name": "onboarding",
+      "description": "Guided setup to discover, install, and authenticate MCPViews plugins.",
+      "arguments": []
+    },
+    {
+      "name": "my-plugin/workflow",
+      "description": "Plugin-provided prompt",
+      "arguments": [
+        { "name": "project_id", "description": "Target project", "required": true }
+      ]
+    }
+  ]
+}
+```
+
+Plugin prompts are namespaced as `{plugin}/{prompt}` (e.g., `my-plugin/workflow`).
+
+### `prompts/get`
+
+Resolve a prompt by name and return MCP-formatted messages.
+
+**Request parameters:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Prompt name. For plugin prompts, use `{plugin}/{prompt}` format. |
+| `arguments` | object | No | Template arguments for plugin prompts (replaces `{{key}}` placeholders). |
+
+**Response:**
+```json
+{
+  "messages": [{
+    "role": "user",
+    "content": {
+      "type": "text",
+      "text": "The prompt content..."
+    }
+  }]
+}
+```
+
+**Error:** JSON-RPC error `-32602` if the prompt name is not recognized.
+
+### Built-in Prompts
+
+| Name | Description |
+|------|-------------|
+| `onboarding` | Guided setup to discover, install, and authenticate MCPViews plugins. Walks through `list_registry`, `mcpviews_install_plugin`, `start_plugin_auth`, and `init_session`. |
 
 ## Tauri Events
 

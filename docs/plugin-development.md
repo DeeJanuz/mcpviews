@@ -633,6 +633,70 @@ Per-tool behavioral rules (tool names are auto-prefixed):
 }
 ```
 
+## Plugin Prompts
+
+Plugins can define guided workflow prompts that are discoverable via the MCP `prompts/list` protocol and fetchable via `get_plugin_prompt` or `prompts/get`. Prompts are markdown files bundled with the plugin that support template argument substitution.
+
+### Defining Prompts
+
+Add a `prompt_definitions` array to your manifest and include the prompt markdown files in your plugin directory:
+
+```
+my-plugin/
+  manifest.json
+  prompts/
+    onboarding.md
+    analysis-workflow.md
+  renderers/
+    ...
+```
+
+**manifest.json:**
+```json
+{
+  "name": "my-plugin",
+  "version": "1.0.0",
+  "prompt_definitions": [
+    {
+      "name": "onboarding",
+      "description": "Guided setup for the analysis plugin",
+      "source": "prompts/onboarding.md",
+      "arguments": []
+    },
+    {
+      "name": "analyze",
+      "description": "Step-by-step code analysis workflow",
+      "source": "prompts/analysis-workflow.md",
+      "arguments": [
+        { "name": "project_path", "description": "Path to the project to analyze", "required": true }
+      ]
+    }
+  ]
+}
+```
+
+### Template Arguments
+
+Prompt source files can include `{{argument_name}}` placeholders that are replaced with provided values at fetch time:
+
+```markdown
+# Analysis Workflow
+
+Analyze the project at `{{project_path}}` using these steps:
+1. Call `analyze_code` with the project path
+2. Review the results in the code_units renderer
+```
+
+### How Prompts Are Discovered
+
+Plugin prompts are namespaced as `{plugin}/{prompt}` in the MCP prompts protocol:
+
+- **`prompts/list`** returns `my-plugin/onboarding`, `my-plugin/analyze`, etc.
+- **`prompts/get`** with `name: "my-plugin/analyze"` fetches and renders the prompt
+- **`get_plugin_prompt`** tool provides the same functionality with explicit `plugin` and `prompt` parameters
+
+The `init_session` plugin registry also includes a `prompts` array for each installed plugin, so agents can discover available prompts without calling `prompts/list`.
+
 ## Cross-Renderer Invocation
 
 Renderers can link to other renderers using the `mcpview://` URI protocol. When a user clicks an invocation link, the target renderer opens in a stacking slide-out drawer panel.

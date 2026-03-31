@@ -40,6 +40,7 @@ A plugin manifest is a JSON file with the following structure:
 | `no_auto_push` | string[] | No | **Deprecated.** Previously controlled which tools skipped auto-push. Auto-push has been removed entirely -- pushes now only happen via explicit `push_content`/`push_review` calls. Field is still accepted for backward compatibility but has no effect. |
 | `registry_index` | object | No | Pre-authored compact index for the `init_session` plugin registry. Contains `summary` (string), `tags` (string[]), `tool_groups` (ToolGroupEntry[]), and `renderer_names` (string[]). If omitted, MCPViews auto-derives the index from the `renderers` map and tool cache. |
 | `mcp` | object | No | MCP server connection configuration. If omitted, the plugin provides renderers only (no remote tools). |
+| `prompt_definitions` | PromptDef[] | No | Plugin prompt definitions for guided workflows. Each entry defines a prompt that can be discovered via the MCP `prompts/list` protocol and fetched via `get_plugin_prompt` or `prompts/get`. Prompts are markdown files bundled with the plugin that support `{{arg}}` template substitution. |
 | `download_url` | string | No | URL to a ZIP package for this plugin version. Used by `manifest_url`-based registry entries and the `update_plugins` tool. |
 
 ### RendererDef
@@ -66,6 +67,36 @@ Structured renderer definition used for agent rule bootstrapping via the `get_pl
 | `data_hint` | string | No | Data schema hint for agents (e.g., `"{ title: string, body: markdown }"`). |
 | `rule` | string | No | Behavioral rule text returned by `get_plugin_docs`/`mcpviews_setup` for agent persistence. |
 
+### PromptDef
+
+Plugin prompt definition for guided workflows discoverable via the MCP prompts protocol.
+
+```json
+{
+  "name": "onboarding",
+  "description": "Guided setup workflow for this plugin",
+  "source": "prompts/onboarding.md",
+  "arguments": [
+    { "name": "project_id", "description": "Target project ID", "required": true }
+  ]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Prompt name. Exposed via `prompts/list` as `{plugin}/{name}`. |
+| `description` | string | Yes | Human-readable description shown in prompt listings. |
+| `source` | string | Yes | Relative path to the prompt markdown file within the plugin directory. |
+| `arguments` | PromptArg[] | No | Template arguments. Each argument's `{{name}}` placeholder in the source file is replaced with the provided value. |
+
+Each `PromptArg` has:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Argument name (used as `{{name}}` placeholder). |
+| `description` | string | Yes | Human-readable description. |
+| `required` | boolean | No | Whether the argument is required. Defaults to false. |
+
 ### Agent Discovery
 
 MCPViews uses a two-tier lazy-loading approach for plugin documentation:
@@ -73,6 +104,8 @@ MCPViews uses a two-tier lazy-loading approach for plugin documentation:
 1. **`init_session`** returns only built-in (universal) rules and a compact `plugin_registry` index listing each plugin's name, summary, tags, tool groups, and renderer names. This keeps session-start token usage minimal.
 
 2. **`get_plugin_docs`** fetches detailed rules for a specific plugin on-demand, with optional filters by tool group, tool name, or renderer name. Agents call this when they need to use a plugin's tools or renderers.
+
+3. **`prompts/list`** and **`prompts/get`** expose plugin prompts via the standard MCP prompts protocol. Plugin prompts are namespaced as `{plugin}/{prompt}` and can also be fetched via the `get_plugin_prompt` tool.
 
 The `plugin_registry` index is either read from the manifest's `registry_index` field (if provided) or auto-derived from the `renderers` map and tool cache. Auto-derivation groups tools by their mapped renderer, title-cases the group names, and uses truncated tool descriptions as hints.
 
