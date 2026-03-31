@@ -40,6 +40,7 @@ A plugin manifest is a JSON file with the following structure:
 | `no_auto_push` | string[] | No | **Deprecated.** Previously controlled which tools skipped auto-push. Auto-push has been removed entirely -- pushes now only happen via explicit `push_content`/`push_review` calls. Field is still accepted for backward compatibility but has no effect. |
 | `registry_index` | object | No | Pre-authored compact index for the `init_session` plugin registry. Contains `summary` (string), `tags` (string[]), `tool_groups` (ToolGroupEntry[]), and `renderer_names` (string[]). If omitted, MCPViews auto-derives the index from the `renderers` map and tool cache. |
 | `mcp` | object | No | MCP server connection configuration. If omitted, the plugin provides renderers only (no remote tools). |
+| `download_url` | string | No | URL to a ZIP package for this plugin version. Used by `manifest_url`-based registry entries and the `update_plugins` tool. |
 
 ### RendererDef
 
@@ -202,6 +203,7 @@ The plugin registry is a JSON file hosted at a remote URL. MCPViews ships with a
 | `tags` | string[] | No | Tags for search filtering (e.g., `["code-analysis", "documentation"]`). |
 | `manifest` | PluginManifest | Yes | The full plugin manifest that gets installed to `~/.mcpviews/plugins/`. |
 | `download_url` | string | No | URL to a ZIP package. If present, the plugin is downloaded and extracted instead of using the manifest alone. |
+| `manifest_url` | string | No | URL to the provider's remote manifest.json. When present, MCPViews fetches this to get current version and download URL, instead of relying on the inline `manifest`. Enables providers to manage versions from their own repo. |
 
 ## Custom Registries
 

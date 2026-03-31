@@ -580,6 +580,7 @@ mod tests {
             tool_rules: HashMap::new(),
             no_auto_push: vec![],
             registry_index: None,
+            download_url: None,
         }
     }
 

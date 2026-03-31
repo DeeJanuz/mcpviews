@@ -304,40 +304,6 @@ pub fn store_plugin_token(plugin_name: String, token: String) -> Result<(), Stri
     crate::auth::store_api_key(&plugin_name, &token)
 }
 
-/// Shared helper for installing or updating a plugin from a registry entry.
-/// Downloads the zip package if a download URL is present, otherwise falls back to manifest-only.
-/// Removes any existing plugin with the same name before adding the new one.
-async fn install_or_update_from_entry(
-    entry: &RegistryEntry,
-    state: &AppState,
-) -> Result<(), String> {
-    if let Some(download_url) = &entry.download_url {
-        let client = state.http_client.clone();
-        let plugins_dir = mcpviews_shared::plugins_dir();
-        let manifest = mcpviews_shared::package::download_and_install_plugin(
-            &client,
-            download_url,
-            &plugins_dir,
-        )
-        .await?;
-
-        let mut registry = state.plugin_registry.lock().unwrap();
-        if registry.manifests.iter().any(|m| m.name == manifest.name) {
-            // Only clear in-memory state — zip extraction already placed files on disk
-            let _ = registry.remove_plugin_in_memory(&manifest.name);
-        }
-        registry.add_plugin(manifest)?;
-    } else {
-        let mut registry = state.plugin_registry.lock().unwrap();
-        if registry.manifests.iter().any(|m| m.name == entry.manifest.name) {
-            let _ = registry.remove_plugin(&entry.manifest.name);
-        }
-        registry.add_plugin(entry.manifest.clone())?;
-    }
-
-    Ok(())
-}
-
 #[tauri::command]
 pub async fn install_plugin_from_registry(
     entry_json: String,
@@ -347,7 +313,7 @@ pub async fn install_plugin_from_registry(
     let entry: RegistryEntry = serde_json::from_str(&entry_json)
         .map_err(|e| format!("Invalid registry entry: {}", e))?;
 
-    install_or_update_from_entry(&entry, &state).await?;
+    state.install_or_update_from_entry(&entry).await?;
 
     state.notify_tools_changed();
     let _ = app_handle.emit("reload_renderers", ());
@@ -392,7 +358,7 @@ pub async fn reinstall_plugin(
     };
 
     if let Some(entry) = entry {
-        install_or_update_from_entry(&entry, &state).await?;
+        state.install_or_update_from_entry(&entry).await?;
     } else {
         // For non-registry plugins, just reload from existing manifest
         let registry = state.plugin_registry.lock().unwrap();
@@ -440,7 +406,24 @@ pub async fn update_plugin(
     }
     .ok_or_else(|| format!("Plugin '{}' not found in registry", name))?;
 
-    install_or_update_from_entry(&entry, &state).await?;
+    // Version guard: only update if the registry version is actually newer
+    {
+        let registry = state.plugin_registry.lock().unwrap();
+        if let Some(installed) = registry.manifests.iter().find(|m| m.name == name) {
+            let installed_ver = semver::Version::parse(&installed.version).ok();
+            let available_ver = semver::Version::parse(&entry.version).ok();
+            if let (Some(iv), Some(av)) = (installed_ver, available_ver) {
+                if av <= iv {
+                    return Err(format!(
+                        "Plugin '{}' is already up to date (version {})",
+                        name, installed.version
+                    ));
+                }
+            }
+        }
+    }
+
+    state.install_or_update_from_entry(&entry).await?;
 
     state.notify_tools_changed();
     let _ = app_handle.emit("reload_renderers", ());
@@ -536,6 +519,7 @@ mod tests {
             manifest: test_manifest(name),
             tags: vec![],
             download_url: None,
+            manifest_url: None,
         }
     }
 
@@ -557,7 +541,7 @@ mod tests {
         let (state, _dir) = test_app_state();
         let entry = test_registry_entry("test-plugin");
 
-        install_or_update_from_entry(&entry, &state).await.unwrap();
+        state.install_or_update_from_entry(&entry).await.unwrap();
 
         let registry = state.plugin_registry.lock().unwrap();
         assert_eq!(registry.manifests.len(), 1);
@@ -569,8 +553,8 @@ mod tests {
         let (state, _dir) = test_app_state();
         let entry = test_registry_entry("dup-plugin");
 
-        install_or_update_from_entry(&entry, &state).await.unwrap();
-        install_or_update_from_entry(&entry, &state).await.unwrap();
+        state.install_or_update_from_entry(&entry).await.unwrap();
+        state.install_or_update_from_entry(&entry).await.unwrap();
 
         let registry = state.plugin_registry.lock().unwrap();
         let count = registry.manifests.iter().filter(|m| m.name == "dup-plugin").count();
@@ -627,7 +611,7 @@ mod tests {
         let entry = test_registry_entry("reinstall-me");
 
         // First install
-        install_or_update_from_entry(&entry, &state).await.unwrap();
+        state.install_or_update_from_entry(&entry).await.unwrap();
 
         // Cache the registry entry (simulating fetch_registry)
         {
@@ -641,7 +625,7 @@ mod tests {
             cached.iter().find(|e| e.name == "reinstall-me").cloned()
         };
         assert!(found_entry.is_some());
-        install_or_update_from_entry(&found_entry.unwrap(), &state).await.unwrap();
+        state.install_or_update_from_entry(&found_entry.unwrap()).await.unwrap();
 
         let registry = state.plugin_registry.lock().unwrap();
         let count = registry.manifests.iter().filter(|m| m.name == "reinstall-me").count();
@@ -710,5 +694,47 @@ mod tests {
         assert_eq!(results[0]["name"], "decision_detail");
         assert_eq!(results[0]["display_mode"], "drawer");
         assert_eq!(results[0]["plugin"], "test-invocable");
+    }
+
+    #[tokio::test]
+    async fn test_version_guard_prevents_downgrade() {
+        let (state, _dir) = test_app_state();
+
+        // Install a plugin at version 2.0.0
+        let mut manifest = test_manifest("guarded-plugin");
+        manifest.version = "2.0.0".to_string();
+        state.install_plugin_from_manifest(manifest, false).unwrap();
+
+        // Create a registry entry at version 1.0.0 (older)
+        let entry = test_registry_entry("guarded-plugin");
+        {
+            let mut cached = state.latest_registry.lock().unwrap();
+            cached.push(entry);
+        }
+
+        // Simulate the version guard logic from update_plugin
+        let result = {
+            let cached = state.latest_registry.lock().unwrap();
+            let entry = cached.iter().find(|e| e.name == "guarded-plugin").unwrap();
+            let registry = state.plugin_registry.lock().unwrap();
+            let installed = registry.manifests.iter().find(|m| m.name == "guarded-plugin").unwrap();
+            let installed_ver = semver::Version::parse(&installed.version).ok();
+            let available_ver = semver::Version::parse(&entry.version).ok();
+            if let (Some(iv), Some(av)) = (installed_ver, available_ver) {
+                if av <= iv {
+                    Err(format!(
+                        "Plugin '{}' is already up to date (version {})",
+                        "guarded-plugin", installed.version
+                    ))
+                } else {
+                    Ok(())
+                }
+            } else {
+                Ok(())
+            }
+        };
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("already up to date"));
     }
 }

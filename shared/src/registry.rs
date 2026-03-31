@@ -1,4 +1,4 @@
-use crate::{cache_dir, config_path, RegistrySource, RemoteRegistry, RegistryEntry};
+use crate::{cache_dir, config_path, PluginManifest, RegistrySource, RemoteRegistry, RegistryEntry};
 
 pub const DEFAULT_REGISTRY_URL: &str =
     "https://raw.githubusercontent.com/DeeJanuz/mcpviews/master/registry/registry.json";
@@ -171,6 +171,9 @@ pub async fn fetch_all_registries(
         return Ok(registry.plugins);
     }
 
+    // Resolve remote manifest URLs for entries that have manifest_url set
+    let all_entries = resolve_manifest_urls(client, all_entries).await;
+
     Ok(all_entries)
 }
 
@@ -231,6 +234,78 @@ async fn fetch_registry_with_cache(
     Ok(registry.plugins)
 }
 
+/// For each entry with a `manifest_url`, fetch the remote manifest.json and
+/// update the entry's `manifest`, `version`, and `download_url` fields.
+/// On fetch failure, log a warning and leave the entry unchanged.
+pub async fn resolve_manifest_urls(
+    client: &reqwest::Client,
+    entries: Vec<RegistryEntry>,
+) -> Vec<RegistryEntry> {
+    use futures::future::join_all;
+
+    let tasks: Vec<_> = entries
+        .into_iter()
+        .map(|entry| {
+            let client = client.clone();
+            async move {
+                let url = match &entry.manifest_url {
+                    Some(url) => url.clone(),
+                    None => return entry,
+                };
+
+                match fetch_remote_manifest(&client, &url).await {
+                    Ok(remote_manifest) => {
+                        let mut entry = entry;
+                        // Update version from remote manifest
+                        entry.version = remote_manifest.version.clone();
+                        // If the remote manifest has a download_url, set it on the entry
+                        // (overrides any existing entry-level download_url)
+                        if remote_manifest.download_url.is_some() {
+                            entry.download_url = remote_manifest.download_url.clone();
+                        }
+                        // Replace inline manifest with the fetched one
+                        entry.manifest = remote_manifest;
+                        entry
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "[mcpviews] Failed to fetch manifest from '{}': {}",
+                            url, e
+                        );
+                        entry
+                    }
+                }
+            }
+        })
+        .collect();
+
+    join_all(tasks).await
+}
+
+/// Fetch and parse a remote manifest.json from the given URL.
+async fn fetch_remote_manifest(
+    client: &reqwest::Client,
+    url: &str,
+) -> Result<PluginManifest, String> {
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("HTTP request failed: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+
+    serde_json::from_str::<PluginManifest>(&body)
+        .map_err(|e| format!("Failed to parse manifest: {}", e))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -247,5 +322,55 @@ mod tests {
         let url = get_configured_registry_url();
         assert!(!url.is_empty());
         assert!(url.starts_with("https://"));
+    }
+
+    fn test_registry_entry(name: &str) -> RegistryEntry {
+        RegistryEntry {
+            name: name.to_string(),
+            version: "1.0.0".to_string(),
+            description: "Test plugin".to_string(),
+            author: None,
+            homepage: None,
+            manifest: PluginManifest {
+                name: name.to_string(),
+                version: "1.0.0".to_string(),
+                renderers: std::collections::HashMap::new(),
+                mcp: None,
+                renderer_definitions: vec![],
+                tool_rules: std::collections::HashMap::new(),
+                no_auto_push: vec![],
+                registry_index: None,
+                download_url: None,
+            },
+            tags: vec![],
+            download_url: None,
+            manifest_url: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_resolve_manifest_urls_no_manifest_url() {
+        let client = reqwest::Client::new();
+        let entry = test_registry_entry("test-plugin");
+        let entries = vec![entry.clone()];
+        let resolved = resolve_manifest_urls(&client, entries).await;
+        assert_eq!(resolved.len(), 1);
+        // Should be unchanged
+        assert_eq!(resolved[0].version, "1.0.0");
+        assert!(resolved[0].manifest_url.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_resolve_manifest_urls_fetch_failure_falls_back() {
+        let client = reqwest::Client::new();
+        let mut entry = test_registry_entry("test-plugin");
+        entry.manifest_url = Some("https://invalid.example.com/nonexistent/manifest.json".to_string());
+
+        let entries = vec![entry];
+        let resolved = resolve_manifest_urls(&client, entries).await;
+        assert_eq!(resolved.len(), 1);
+        // Should fall back to original version on failure
+        assert_eq!(resolved[0].version, "1.0.0");
+        assert_eq!(resolved[0].manifest.version, "1.0.0");
     }
 }

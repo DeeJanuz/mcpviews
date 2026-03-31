@@ -65,6 +65,7 @@ pub async fn call_tool(
         "mcpviews_setup" => call_mcpviews_setup(arguments, state).await,
         "mcpviews_install_plugin" => call_install_plugin(arguments, state).await,
         "get_plugin_docs" => call_get_plugin_docs(arguments, state).await,
+        "update_plugins" => call_update_plugins(arguments, state).await,
         _ => {
             // Check plugin tools — scope MutexGuard to block before any .await
             let (plugin_info, client) = lookup_plugin_tool(name, state).await;
@@ -140,6 +141,38 @@ async fn ensure_plugins_refreshed(
     };
     if has_stale {
         PluginRegistry::refresh_stale_plugins(state, client).await;
+    }
+}
+
+/// Ensure the registry cache is populated. If empty, fetch from all sources
+/// and resolve remote manifests. Errors are logged but swallowed (best-effort).
+async fn ensure_registry_fresh(state: &Arc<TokioMutex<AsyncAppState>>) {
+    let is_empty = {
+        let state_guard = state.lock().await;
+        let empty = state_guard.inner.latest_registry.lock().unwrap().is_empty();
+        empty
+    };
+
+    if !is_empty {
+        return;
+    }
+
+    let client = {
+        let state_guard = state.lock().await;
+        state_guard.inner.http_client.clone()
+    };
+
+    let sources = mcpviews_shared::registry::get_registry_sources();
+    match mcpviews_shared::registry::fetch_all_registries(&client, &sources).await {
+        Ok(entries) => {
+            let resolved = mcpviews_shared::registry::resolve_manifest_urls(&client, entries).await;
+            let state_guard = state.lock().await;
+            let mut cached = state_guard.inner.latest_registry.lock().unwrap();
+            *cached = resolved;
+        }
+        Err(e) => {
+            eprintln!("[mcpviews] ensure_registry_fresh failed: {}", e);
+        }
     }
 }
 
@@ -731,14 +764,42 @@ fn build_plugin_registry(
     }).collect()
 }
 
-async fn gather_slim_session_data(state: &Arc<TokioMutex<AsyncAppState>>) -> (Vec<Value>, Vec<Value>, Vec<Value>) {
+/// Collect plugin updates by comparing installed versions against registry versions.
+fn collect_plugin_updates(
+    manifests: &[mcpviews_shared::PluginManifest],
+    registry_entries: &[mcpviews_shared::RegistryEntry],
+) -> Vec<Value> {
+    manifests
+        .iter()
+        .filter_map(|manifest| {
+            let entry = registry_entries.iter().find(|e| e.name == manifest.name)?;
+            let installed = semver::Version::parse(&manifest.version).ok()?;
+            let available = semver::Version::parse(&entry.version).ok()?;
+            if available > installed {
+                Some(serde_json::json!({
+                    "name": manifest.name,
+                    "installed_version": manifest.version,
+                    "available_version": entry.version,
+                }))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+async fn gather_slim_session_data(state: &Arc<TokioMutex<AsyncAppState>>) -> (Vec<Value>, Vec<Value>, Vec<Value>, Vec<Value>) {
+    ensure_registry_fresh(state).await;
+
     let state_guard = state.lock().await;
     let all_renderers = available_renderers(&state_guard.inner);
     let registry = state_guard.inner.plugin_registry.lock().unwrap();
+    let cached_registry = state_guard.inner.latest_registry.lock().unwrap();
     let rules = collect_builtin_rules(&all_renderers);
     let plugin_status = collect_plugin_auth_status(&registry.manifests);
     let plugin_registry = build_plugin_registry(&registry.manifests, &registry.tool_cache);
-    (rules, plugin_status, plugin_registry)
+    let plugin_updates = collect_plugin_updates(&registry.manifests, &cached_registry);
+    (rules, plugin_status, plugin_registry, plugin_updates)
 }
 
 async fn call_init_session(
@@ -750,13 +811,14 @@ async fn call_init_session(
         .and_then(|v| v.as_str())
         .unwrap_or("generic");
 
-    let (rules, plugin_status, plugin_registry) = gather_slim_session_data(state).await;
+    let (rules, plugin_status, plugin_registry, plugin_updates) = gather_slim_session_data(state).await;
 
     let response = serde_json::json!({
         "rules": rules,
         "plugin_status": plugin_status,
         "persistence_instructions": persistence_instructions(agent_type),
         "plugin_registry": plugin_registry,
+        "plugin_updates": plugin_updates,
     });
 
     Ok(serde_json::json!({
@@ -1257,6 +1319,99 @@ async fn call_install_plugin(
     }))
 }
 
+async fn call_update_plugins(
+    arguments: Value,
+    state: &Arc<TokioMutex<AsyncAppState>>,
+) -> Result<Value, String> {
+    let plugin_name = arguments
+        .get("plugin_name")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    // Ensure registry is fresh
+    ensure_registry_fresh(state).await;
+
+    // Identify plugins needing updates
+    let updates_needed: Vec<(String, String, mcpviews_shared::RegistryEntry)> = {
+        let state_guard = state.lock().await;
+        let registry = state_guard.inner.plugin_registry.lock().unwrap();
+        let cached = state_guard.inner.latest_registry.lock().unwrap();
+
+        let plugins_with_updates = registry.list_plugins_with_updates(&cached);
+        plugins_with_updates
+            .iter()
+            .filter(|p| p.update_available.is_some())
+            .filter(|p| {
+                if let Some(ref name) = plugin_name {
+                    p.name == *name
+                } else {
+                    true
+                }
+            })
+            .filter_map(|p| {
+                let entry = cached.iter().find(|e| e.name == p.name)?.clone();
+                Some((p.name.clone(), p.version.clone(), entry))
+            })
+            .collect()
+    };
+
+    if updates_needed.is_empty() {
+        return Ok(serde_json::json!({
+            "content": [{
+                "type": "text",
+                "text": serde_json::to_string(&serde_json::json!({
+                    "updated": []
+                })).unwrap()
+            }]
+        }));
+    }
+
+    let mut results: Vec<Value> = Vec::new();
+
+    for (name, from_version, entry) in &updates_needed {
+        let install_result = {
+            let state_guard = state.lock().await;
+            state_guard.inner.install_or_update_from_entry(entry).await
+        };
+
+        match install_result {
+            Ok(()) => {
+                results.push(serde_json::json!({
+                    "plugin": name,
+                    "from": from_version,
+                    "to": entry.version,
+                    "status": "success",
+                }));
+            }
+            Err(e) => {
+                results.push(serde_json::json!({
+                    "plugin": name,
+                    "from": from_version,
+                    "to": entry.version,
+                    "status": "error",
+                    "error": e,
+                }));
+            }
+        }
+    }
+
+    // Notify MCP clients and GUI
+    {
+        let state_guard = state.lock().await;
+        state_guard.inner.notify_tools_changed();
+        let _ = state_guard.app_handle.emit("reload_renderers", ());
+    }
+
+    Ok(serde_json::json!({
+        "content": [{
+            "type": "text",
+            "text": serde_json::to_string(&serde_json::json!({
+                "updated": results
+            })).unwrap()
+        }]
+    }))
+}
+
 // ─── Tool definitions ───
 
 fn build_data_description(renderers: &[RendererDef], prefix: &str) -> String {
@@ -1412,6 +1567,19 @@ fn builtin_tool_definitions(renderers: &[RendererDef]) -> Vec<Value> {
                 "required": ["plugin"]
             }
         }),
+        serde_json::json!({
+            "name": "update_plugins",
+            "description": "Update installed plugins to their latest versions from the registry. Uses remote manifest resolution to discover available updates.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "plugin_name": {
+                        "type": "string",
+                        "description": "Specific plugin to update. If omitted, updates all plugins with available updates."
+                    }
+                }
+            }
+        }),
     ]
 }
 
@@ -1435,6 +1603,7 @@ mod tests {
             tool_rules,
             no_auto_push: vec![],
             registry_index: None,
+            download_url: None,
         }
     }
 
@@ -1721,6 +1890,7 @@ mod tests {
             tool_rules: std::collections::HashMap::new(),
             no_auto_push: vec![],
             registry_index: None,
+            download_url: None,
         }
     }
 
@@ -2180,5 +2350,86 @@ mod tests {
         assert!(desc.contains("rich_content"));
         assert!(!desc.contains("search_results"));
         assert!(desc.contains("get_plugin_docs"));
+    }
+
+    // ─── collect_plugin_updates tests ───
+
+    #[test]
+    fn test_collect_plugin_updates_no_updates() {
+        let manifest = make_manifest("test-plugin", vec![], std::collections::HashMap::new(), None);
+        let entry = mcpviews_shared::RegistryEntry {
+            name: "test-plugin".to_string(),
+            version: "1.0.0".to_string(),
+            description: "Test".to_string(),
+            author: None,
+            homepage: None,
+            manifest: manifest.clone(),
+            tags: vec![],
+            download_url: None,
+            manifest_url: None,
+        };
+        let updates = collect_plugin_updates(&[manifest], &[entry]);
+        assert!(updates.is_empty());
+    }
+
+    #[test]
+    fn test_collect_plugin_updates_has_update() {
+        let manifest = make_manifest("test-plugin", vec![], std::collections::HashMap::new(), None);
+        let mut entry_manifest = manifest.clone();
+        entry_manifest.version = "2.0.0".to_string();
+        let entry = mcpviews_shared::RegistryEntry {
+            name: "test-plugin".to_string(),
+            version: "2.0.0".to_string(),
+            description: "Test".to_string(),
+            author: None,
+            homepage: None,
+            manifest: entry_manifest,
+            tags: vec![],
+            download_url: None,
+            manifest_url: None,
+        };
+        let updates = collect_plugin_updates(&[manifest], &[entry]);
+        assert_eq!(updates.len(), 1);
+        assert_eq!(updates[0]["name"], "test-plugin");
+        assert_eq!(updates[0]["installed_version"], "1.0.0");
+        assert_eq!(updates[0]["available_version"], "2.0.0");
+    }
+
+    #[test]
+    fn test_collect_plugin_updates_older_registry_ignored() {
+        let mut manifest = make_manifest("test-plugin", vec![], std::collections::HashMap::new(), None);
+        manifest.version = "3.0.0".to_string();
+        let entry = mcpviews_shared::RegistryEntry {
+            name: "test-plugin".to_string(),
+            version: "2.0.0".to_string(),
+            description: "Test".to_string(),
+            author: None,
+            homepage: None,
+            manifest: make_manifest("test-plugin", vec![], std::collections::HashMap::new(), None),
+            tags: vec![],
+            download_url: None,
+            manifest_url: None,
+        };
+        let updates = collect_plugin_updates(&[manifest], &[entry]);
+        assert!(updates.is_empty());
+    }
+
+    #[test]
+    fn test_collect_plugin_updates_no_matching_entry() {
+        let manifest = make_manifest("test-plugin", vec![], std::collections::HashMap::new(), None);
+        let updates = collect_plugin_updates(&[manifest], &[]);
+        assert!(updates.is_empty());
+    }
+
+    // ─── update_plugins tool definition test ───
+
+    #[test]
+    fn test_update_plugins_tool_defined() {
+        let renderers = builtin_renderer_definitions();
+        let tools = builtin_tool_definitions(&renderers);
+        let update_tool = tools.iter().find(|t| t["name"] == "update_plugins");
+        assert!(update_tool.is_some(), "update_plugins tool should be defined");
+        let schema = &update_tool.unwrap()["inputSchema"];
+        assert!(schema["properties"]["plugin_name"].is_object());
     }
 }

@@ -81,6 +81,10 @@ pub struct PluginManifest {
     pub no_auto_push: Vec<String>,
     #[serde(default)]
     pub registry_index: Option<PluginRegistryIndex>,
+    /// URL to a ZIP package for this plugin version. Used by manifest_url-based
+    /// registry entries and the update_plugins tool.
+    #[serde(default)]
+    pub download_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -229,6 +233,11 @@ pub struct RegistryEntry {
     pub tags: Vec<String>,
     #[serde(default)]
     pub download_url: Option<String>,
+    /// URL to the provider's remote manifest.json. When present, MCPViews fetches
+    /// this to get the current version and download URL instead of relying on
+    /// the inline `manifest` field.
+    #[serde(default)]
+    pub manifest_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -639,6 +648,55 @@ mod tests {
         }"#;
         let manifest: PluginManifest = serde_json::from_str(json).unwrap();
         assert!(manifest.no_auto_push.is_empty());
+    }
+
+    #[test]
+    fn test_plugin_manifest_download_url_field() {
+        let json = r#"{
+            "name": "test-plugin",
+            "version": "1.0.0",
+            "download_url": "https://github.com/org/repo/releases/download/v1.0.0/test-plugin.zip"
+        }"#;
+        let manifest: PluginManifest = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            manifest.download_url,
+            Some("https://github.com/org/repo/releases/download/v1.0.0/test-plugin.zip".to_string())
+        );
+    }
+
+    #[test]
+    fn test_plugin_manifest_download_url_defaults_to_none() {
+        let json = r#"{ "name": "test-plugin", "version": "1.0.0" }"#;
+        let manifest: PluginManifest = serde_json::from_str(json).unwrap();
+        assert!(manifest.download_url.is_none());
+    }
+
+    #[test]
+    fn test_registry_entry_manifest_url_field() {
+        let json = r#"{
+            "name": "test-plugin",
+            "version": "1.0.0",
+            "description": "Test",
+            "manifest_url": "https://raw.githubusercontent.com/org/repo/master/plugin/manifest.json",
+            "manifest": { "name": "test-plugin", "version": "1.0.0" }
+        }"#;
+        let entry: RegistryEntry = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            entry.manifest_url,
+            Some("https://raw.githubusercontent.com/org/repo/master/plugin/manifest.json".to_string())
+        );
+    }
+
+    #[test]
+    fn test_registry_entry_manifest_url_defaults_to_none() {
+        let json = r#"{
+            "name": "test-plugin",
+            "version": "1.0.0",
+            "description": "Test",
+            "manifest": { "name": "test-plugin", "version": "1.0.0" }
+        }"#;
+        let entry: RegistryEntry = serde_json::from_str(json).unwrap();
+        assert!(entry.manifest_url.is_none());
     }
 
     #[test]

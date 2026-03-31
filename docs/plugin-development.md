@@ -756,6 +756,60 @@ A full-featured plugin manifest with all optional fields:
 }
 ```
 
+## Release Convention
+
+Providers can manage plugin versions entirely from their own repository by using `manifest_url` in the registry entry. This eliminates the need to submit pull requests to the MCPViews registry for every release.
+
+### Provider Repo Structure
+
+```
+plugin/
+  manifest.json       # Always reflects the current release
+  release/
+    {name}.zip        # Latest ZIP package (optional)
+```
+
+### How It Works
+
+1. The MCPViews registry entry includes a `manifest_url` pointing to the raw `manifest.json` in the provider's repo:
+   ```json
+   {
+     "name": "my-plugin",
+     "manifest_url": "https://raw.githubusercontent.com/org/repo/master/plugin/manifest.json",
+     "description": "My plugin description",
+     "author": "Author Name"
+   }
+   ```
+
+2. The provider's `manifest.json` includes `version` and `download_url`:
+   ```json
+   {
+     "name": "my-plugin",
+     "version": "1.2.0",
+     "download_url": "https://github.com/org/repo/releases/download/v1.2.0/my-plugin.zip",
+     "renderers": { ... },
+     "mcp": { ... }
+   }
+   ```
+
+3. When MCPViews fetches the registry, it resolves each `manifest_url` to get the current version and download location.
+
+4. To release a new version, the provider:
+   - Bumps `version` in `plugin/manifest.json`
+   - Updates `download_url` to point to the new release asset
+   - Creates a GitHub release with the ZIP attached
+   - No MCPViews PR needed
+
+### Versioned Archives
+
+Use GitHub releases tagged `v{version}` with ZIP assets:
+
+```
+https://github.com/org/repo/releases/download/v1.2.0/my-plugin.zip
+```
+
+The `download_url` in `manifest.json` should always point to the latest versioned release asset.
+
 ## Troubleshooting
 
 **Plugin not loading:**

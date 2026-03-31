@@ -641,6 +641,13 @@ Initialize MCPViews for the current session. Returns current renderer definition
       ],
       "renderers": ["search_results", "code_units"]
     }
+  ],
+  "plugin_updates": [
+    {
+      "name": "my-plugin",
+      "installed_version": "1.0.0",
+      "available_version": "1.2.0"
+    }
   ]
 }
 ```
@@ -648,6 +655,8 @@ Initialize MCPViews for the current session. Returns current renderer definition
 The `rules` array now contains only built-in (universal) rules -- the `renderer_selection` system rule and rules for universal-scope renderers. Plugin-specific rules are fetched on-demand via `get_plugin_docs`.
 
 The `plugin_registry` array is a compact index of installed plugins, listing their tool groups, renderer names, and tags. Agents use this to identify which plugin to query for detailed docs, then call `get_plugin_docs` with the plugin name and optional filters.
+
+The `plugin_updates` array lists plugins that have newer versions available in the registry. Each entry includes the plugin name, installed version, and available version. Call `update_plugins` to apply updates.
 
 ### `get_plugin_docs`
 
@@ -684,6 +693,29 @@ When `groups` is provided, the group names are expanded to their constituent too
       "source": "my-plugin",
       "tool": "tp__search_codebase",
       "rule": "Use search for queries."
+    }
+  ]
+}
+```
+
+### `update_plugins`
+
+Update installed plugins to their latest versions from the registry. Uses remote manifest resolution to discover available updates. If no plugin name is provided, updates all plugins with available updates.
+
+**Parameters:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `plugin_name` | string | No | Specific plugin to update. If omitted, updates all plugins with available updates. |
+
+**Response:**
+```json
+{
+  "updated": [
+    {
+      "plugin": "my-plugin",
+      "from": "1.0.0",
+      "to": "1.2.0",
+      "status": "success"
     }
   ]
 }

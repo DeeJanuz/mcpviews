@@ -100,6 +100,50 @@ impl AppState {
         origins.into_iter().collect()
     }
 
+    /// Install or update a plugin from a registry entry.
+    /// Downloads the ZIP package if a download URL is present (checking entry-level
+    /// download_url first, then manifest-level), otherwise falls back to manifest-only.
+    pub async fn install_or_update_from_entry(
+        &self,
+        entry: &RegistryEntry,
+    ) -> Result<(), String> {
+        // Priority: entry.download_url > entry.manifest.download_url > manifest-only
+        let download_url = entry
+            .download_url
+            .as_deref()
+            .or(entry.manifest.download_url.as_deref());
+
+        if let Some(url) = download_url {
+            let client = self.http_client.clone();
+            let plugins_dir = mcpviews_shared::plugins_dir();
+            let manifest = mcpviews_shared::package::download_and_install_plugin(
+                &client,
+                url,
+                &plugins_dir,
+            )
+            .await?;
+
+            let mut registry = self.plugin_registry.lock().unwrap();
+            if registry.manifests.iter().any(|m| m.name == manifest.name) {
+                // Only clear in-memory state — zip extraction already placed files on disk
+                let _ = registry.remove_plugin_in_memory(&manifest.name);
+            }
+            registry.add_plugin(manifest)?;
+        } else {
+            let mut registry = self.plugin_registry.lock().unwrap();
+            if registry
+                .manifests
+                .iter()
+                .any(|m| m.name == entry.manifest.name)
+            {
+                let _ = registry.remove_plugin(&entry.manifest.name);
+            }
+            registry.add_plugin(entry.manifest.clone())?;
+        }
+
+        Ok(())
+    }
+
     /// Reload all plugins from disk and broadcast a tools/list_changed notification
     /// to all connected MCP SSE sessions.
     pub fn reload_plugins(&self) {
