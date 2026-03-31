@@ -2,6 +2,78 @@
 
 A standalone Tauri v2 desktop app that serves as a rich display for AI agents. Replaces the companion Node.js server with a native app featuring system tray, auto-start, and a built-in HTTP push API.
 
+## Quick Start
+
+### 1. Install MCPViews
+
+**macOS / Windows**: Download the latest installer from [Releases](https://github.com/DeeJanuz/mcpviews/releases) (`.dmg` for macOS, `.msi` or `.exe` for Windows).
+
+**Linux**: See [Building from Source](#building-from-source) below.
+
+### 2. Connect your AI agent
+
+Add MCPViews as an MCP server in your agent's configuration. MCPViews runs a Streamable HTTP MCP server on `http://localhost:4200/mcp`.
+
+**Claude Code** — add to your global or project `.claude/settings.json`:
+```json
+{
+  "mcpServers": {
+    "mcpviews": {
+      "type": "url",
+      "url": "http://localhost:4200/mcp"
+    }
+  }
+}
+```
+
+**Claude Desktop** — add to `claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "mcpviews": {
+      "url": "http://localhost:4200/mcp"
+    }
+  }
+}
+```
+
+**Cursor / Windsurf / other MCP clients** — point to `http://localhost:4200/mcp` as a Streamable HTTP MCP server.
+
+### 3. Set up rules and skills
+
+On your first conversation, ask your agent to call the `mcpviews_setup` tool. This returns platform-specific instructions for persisting a session-start rule so `init_session` is called automatically in every future session:
+
+```
+> Call the mcpviews_setup tool to configure MCPViews for this agent.
+```
+
+The setup tool will tell your agent how to create the appropriate rule file (e.g., `.claude/rules/mcpviews-init.md` for Claude Code) so MCPViews initializes automatically going forward.
+
+### 4. Install plugins
+
+Plugins extend MCPViews with tools from third-party MCP servers. Browse and install them directly through your agent:
+
+```
+> Call list_registry to see available plugins.
+> Call mcpviews_install_plugin with trigger_auth: true to install and authenticate in one step.
+```
+
+Or use the **GUI**: click the system tray icon and select **Manage Plugins** to browse, install, and configure plugins visually.
+
+Plugins that require authentication (OAuth, API key, or bearer token) will show their auth status in the `init_session` response. Use `start_plugin_auth` to authenticate individually, or pass `trigger_auth: true` when installing to handle it inline.
+
+### 5. Build your own plugins
+
+See the [Plugin Development Guide](docs/plugin-development.md) for a step-by-step walkthrough covering:
+- Creating a plugin manifest
+- Writing custom renderers
+- Setting up MCP server integration and authentication
+- Packaging and publishing to the registry
+
+For the full manifest schema and auth reference, see [Plugin System Reference](docs/plugins.md).
+
+---
+
 ## Architecture
 
 - **Rust backend** (axum): HTTP server on `:4200` for push API + review workflow
@@ -9,14 +81,12 @@ A standalone Tauri v2 desktop app that serves as a rich display for AI agents. R
 - **Node.js sidecar**: SSE bridge for remote server connections
 - **System tray**: Hide-to-tray, click to show, auto-start on login
 
-## Installation
+## Building from Source
 
-**macOS / Windows**: Download the latest release from [Releases](https://github.com/DeeJanuz/mcpviews/releases).
+Requires Rust, Node.js 20+, and platform-specific system libraries.
 
-**Linux** (build from source):
-
+**Linux prerequisites:**
 ```bash
-# Prerequisites: Rust, Node.js 20+, and system libraries
 # Debian/Ubuntu:
 sudo apt install libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
@@ -25,17 +95,14 @@ sudo dnf install webkit2gtk4.1-devel libappindicator-gtk3-devel librsvg2-devel
 
 # Arch:
 sudo pacman -S webkit2gtk-4.1 libappindicator-gtk3 librsvg
+```
 
-# Build
+**Build:**
+```bash
 git clone https://github.com/DeeJanuz/mcpviews.git
 cd mcpviews
 npm install
 npm run build
-
-# The binary is at src-tauri/target/release/mcpviews
-# Or install the Tauri CLI for a bundled .deb/.AppImage:
-cargo install tauri-cli
-cargo tauri build
 ```
 
 ## Development
