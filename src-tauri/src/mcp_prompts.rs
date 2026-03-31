@@ -88,6 +88,14 @@ pub async fn list_prompts(state: &Arc<TokioMutex<AsyncAppState>>) -> Vec<Value> 
     prompts
 }
 
+/// Look up a built-in prompt by name. Returns the content if found.
+fn resolve_builtin_prompt(name: &str) -> Option<&'static str> {
+    builtin_prompt_definitions()
+        .into_iter()
+        .find(|(n, _, _, _)| *n == name)
+        .map(|(_, _, _, content)| content)
+}
+
 /// Resolve a prompt by name and return MCP-formatted messages.
 pub async fn get_prompt(
     name: &str,
@@ -95,18 +103,16 @@ pub async fn get_prompt(
     state: &Arc<TokioMutex<AsyncAppState>>,
 ) -> Result<Value, String> {
     // Check built-in prompts first
-    for (builtin_name, _, _, content) in builtin_prompt_definitions() {
-        if name == builtin_name {
-            return Ok(serde_json::json!({
-                "messages": [{
-                    "role": "user",
-                    "content": {
-                        "type": "text",
-                        "text": content
-                    }
-                }]
-            }));
-        }
+    if let Some(content) = resolve_builtin_prompt(name) {
+        return Ok(serde_json::json!({
+            "messages": [{
+                "role": "user",
+                "content": {
+                    "type": "text",
+                    "text": content
+                }
+            }]
+        }));
     }
 
     // Check plugin prompts ({plugin}/{prompt} format)
@@ -206,5 +212,28 @@ mod tests {
         assert_eq!(defs.len(), 1);
         assert_eq!(defs[0].0, "onboarding");
         assert!(!defs[0].3.is_empty()); // content is non-empty
+    }
+
+    #[test]
+    fn test_resolve_builtin_prompt_found() {
+        let content = resolve_builtin_prompt("onboarding");
+        assert!(content.is_some());
+        assert!(content.unwrap().contains("MCPViews Plugin Onboarding"));
+    }
+
+    #[test]
+    fn test_resolve_builtin_prompt_not_found() {
+        let content = resolve_builtin_prompt("nonexistent");
+        assert!(content.is_none());
+    }
+
+    #[test]
+    fn test_builtin_prompt_definitions_structure() {
+        let defs = builtin_prompt_definitions();
+        for (name, desc, _args, content) in &defs {
+            assert!(!name.is_empty(), "name should not be empty");
+            assert!(!desc.is_empty(), "description should not be empty");
+            assert!(!content.is_empty(), "content should not be empty");
+        }
     }
 }

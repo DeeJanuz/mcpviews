@@ -15,6 +15,7 @@ pub fn test_manifest(name: &str) -> mcpviews_shared::PluginManifest {
         no_auto_push: vec![],
         registry_index: None,
         download_url: None,
+        prompt_definitions: vec![],
     }
 }
 

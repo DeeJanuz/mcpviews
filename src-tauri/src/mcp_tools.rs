@@ -67,8 +67,8 @@ pub async fn call_tool(
         "get_plugin_docs" => call_get_plugin_docs(arguments, state).await,
         "get_plugin_prompt" => crate::mcp_prompts::call_get_plugin_prompt(arguments, state).await,
         "update_plugins" => call_update_plugins(arguments, state).await,
-        "list_registry" => call_list_registry(arguments, state).await,
-        "start_plugin_auth" => call_start_plugin_auth(arguments, state).await,
+        "list_registry" => crate::mcp_registry_tools::call_list_registry(arguments, state).await,
+        "start_plugin_auth" => crate::mcp_registry_tools::call_start_plugin_auth(arguments, state).await,
         _ => {
             // Check plugin tools — scope MutexGuard to block before any .await
             let (plugin_info, client) = lookup_plugin_tool(name, state).await;
@@ -149,7 +149,7 @@ async fn ensure_plugins_refreshed(
 
 /// Ensure the registry cache is populated. If empty, fetch from all sources
 /// and resolve remote manifests. Errors are logged but swallowed (best-effort).
-async fn ensure_registry_fresh(state: &Arc<TokioMutex<AsyncAppState>>) {
+pub(crate) async fn ensure_registry_fresh(state: &Arc<TokioMutex<AsyncAppState>>) {
     let is_empty = {
         let state_guard = state.lock().await;
         let empty = state_guard.inner.latest_registry.lock().unwrap().is_empty();
@@ -237,6 +237,16 @@ async fn call_push_review(
     call_push_impl(arguments, state, true).await
 }
 
+/// Normalize a data parameter: if it's a JSON string, parse it into an object.
+/// Falls back to the original value if parsing fails.
+fn normalize_data_param(raw: &Value) -> Value {
+    if let Some(s) = raw.as_str() {
+        serde_json::from_str(s).unwrap_or_else(|_| raw.clone())
+    } else {
+        raw.clone()
+    }
+}
+
 async fn call_push_impl(
     arguments: Value,
     state: &Arc<TokioMutex<AsyncAppState>>,
@@ -251,12 +261,7 @@ async fn call_push_impl(
         let raw = arguments
             .get("data")
             .ok_or("Missing required parameter: data")?;
-        // Agents sometimes pass data as a JSON string instead of an object — auto-parse it
-        if let Some(s) = raw.as_str() {
-            serde_json::from_str(s).unwrap_or_else(|_| raw.clone())
-        } else {
-            raw.clone()
-        }
+        normalize_data_param(raw)
     };
     let meta = arguments.get("meta").cloned();
     let timeout = if review_required {
@@ -1415,147 +1420,6 @@ async fn call_update_plugins(
     }))
 }
 
-async fn call_list_registry(
-    arguments: Value,
-    state: &Arc<TokioMutex<AsyncAppState>>,
-) -> Result<Value, String> {
-    // Ensure registry is populated
-    ensure_registry_fresh(state).await;
-
-    let tag_filter = arguments
-        .get("tag")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_lowercase());
-
-    let result = {
-        let state_guard = state.lock().await;
-        let cached = state_guard.inner.latest_registry.lock().unwrap();
-        let registry = state_guard.inner.plugin_registry.lock().unwrap();
-        let auth_status = collect_plugin_auth_status(&registry.manifests);
-
-        let entries: Vec<Value> = cached
-            .iter()
-            .filter(|entry| {
-                if let Some(ref tag) = tag_filter {
-                    entry.tags.iter().any(|t| t.to_lowercase() == *tag)
-                } else {
-                    true
-                }
-            })
-            .map(|entry| {
-                let installed_manifest = registry.manifests.iter().find(|m| m.name == entry.name);
-                let is_installed = installed_manifest.is_some();
-                let installed_version = installed_manifest.map(|m| m.version.clone());
-                let update_available = installed_manifest.and_then(|m| {
-                    mcpviews_shared::newer_version(&m.version, &entry.version)
-                        .map(|v| v.to_string())
-                });
-
-                // Find auth info from collected status
-                let auth_info = auth_status.iter().find(|s| s["plugin"] == entry.name);
-                let auth_type = auth_info.and_then(|s| s["auth_type"].as_str());
-                let auth_configured = auth_info.and_then(|s| s["auth_configured"].as_bool()).unwrap_or(false);
-
-                serde_json::json!({
-                    "name": entry.name,
-                    "description": entry.description,
-                    "version": entry.version,
-                    "author": entry.author,
-                    "tags": entry.tags,
-                    "download_url": entry.download_url,
-                    "installed": is_installed,
-                    "installed_version": installed_version,
-                    "auth_type": auth_type,
-                    "auth_configured": if is_installed { auth_configured } else { false },
-                    "update_available": update_available,
-                })
-            })
-            .collect();
-
-        serde_json::json!({
-            "content": [{
-                "type": "text",
-                "text": serde_json::to_string_pretty(&serde_json::json!({
-                    "plugins": entries,
-                    "total": entries.len(),
-                })).unwrap()
-            }]
-        })
-    };
-
-    Ok(result)
-}
-
-async fn call_start_plugin_auth(
-    arguments: Value,
-    state: &Arc<TokioMutex<AsyncAppState>>,
-) -> Result<Value, String> {
-    let plugin_name = arguments
-        .get("plugin_name")
-        .and_then(|v| v.as_str())
-        .ok_or("Missing required parameter: plugin_name")?
-        .to_string();
-
-    let (auth, client) = {
-        let state_guard = state.lock().await;
-        let registry = state_guard.inner.plugin_registry.lock().unwrap();
-        let auth = registry.resolve_plugin_auth(&plugin_name)?;
-        let client = state_guard.inner.http_client.clone();
-        (auth, client)
-    };
-
-    let result_text = match &auth {
-        mcpviews_shared::PluginAuth::OAuth {
-            client_id,
-            auth_url,
-            token_url,
-            scopes,
-        } => {
-            match crate::auth::start_oauth_flow(
-                &plugin_name,
-                client_id.as_deref(),
-                auth_url,
-                token_url,
-                scopes,
-                &client,
-            )
-            .await
-            {
-                Ok(_token) => format!("OAuth authentication for '{}' completed successfully.", plugin_name),
-                Err(e) => return Err(format!("OAuth flow failed for '{}': {}", plugin_name, e)),
-            }
-        }
-        mcpviews_shared::PluginAuth::Bearer { token_env } => {
-            match std::env::var(token_env) {
-                Ok(_) => format!("Bearer token for '{}' is configured via env var '{}'.", plugin_name, token_env),
-                Err(_) => return Err(format!(
-                    "Environment variable '{}' is not set. Set it and restart.",
-                    token_env
-                )),
-            }
-        }
-        mcpviews_shared::PluginAuth::ApiKey { key_env, .. } => {
-            if let Some(env_var) = key_env {
-                match std::env::var(env_var) {
-                    Ok(_) => format!("API key for '{}' is configured via env var '{}'.", plugin_name, env_var),
-                    Err(_) => return Err(format!(
-                        "Environment variable '{}' is not set. Set it and restart.",
-                        env_var
-                    )),
-                }
-            } else {
-                return Err("No key_env configured for this plugin".to_string());
-            }
-        }
-    };
-
-    Ok(serde_json::json!({
-        "content": [{
-            "type": "text",
-            "text": result_text
-        }]
-    }))
-}
 
 // ─── Tool definitions ───
 
@@ -2642,5 +2506,25 @@ mod tests {
         let tools = builtin_tool_definitions(&[]);
         let tool = tools.iter().find(|t| t["name"] == "get_plugin_prompt");
         assert!(tool.is_some(), "get_plugin_prompt tool should be defined");
+    }
+
+    #[test]
+    fn test_normalize_data_param_object_passthrough() {
+        let obj = serde_json::json!({"key": "value"});
+        assert_eq!(normalize_data_param(&obj), obj);
+    }
+
+    #[test]
+    fn test_normalize_data_param_valid_json_string() {
+        let s = serde_json::json!("{\"key\": \"value\"}");
+        let result = normalize_data_param(&s);
+        assert_eq!(result, serde_json::json!({"key": "value"}));
+    }
+
+    #[test]
+    fn test_normalize_data_param_invalid_json_string() {
+        let s = serde_json::json!("not json at all");
+        let result = normalize_data_param(&s);
+        assert_eq!(result, serde_json::json!("not json at all"));
     }
 }

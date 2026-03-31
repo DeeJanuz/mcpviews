@@ -50,6 +50,24 @@ fn default_renderer_scope() -> String {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromptArgument {
+    pub name: String,
+    pub description: String,
+    #[serde(default)]
+    pub required: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromptDef {
+    pub name: String,
+    pub description: String,
+    #[serde(default)]
+    pub arguments: Vec<PromptArgument>,
+    /// Relative path to prompt content file within the plugin directory
+    pub source: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolGroupEntry {
     pub name: String,
     pub hint: String,
@@ -85,6 +103,8 @@ pub struct PluginManifest {
     /// registry entries and the update_plugins tool.
     #[serde(default)]
     pub download_url: Option<String>,
+    #[serde(default)]
+    pub prompt_definitions: Vec<PromptDef>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -724,6 +744,31 @@ mod tests {
 
         // Roundtrip
         assert_eq!(serde_json::to_string(&DisplayMode::Drawer).unwrap(), r#""drawer""#);
+    }
+
+    #[test]
+    fn test_newer_version_available() {
+        assert_eq!(newer_version("1.0.0", "2.0.0"), Some("2.0.0".to_string()));
+    }
+
+    #[test]
+    fn test_newer_version_same() {
+        assert_eq!(newer_version("1.0.0", "1.0.0"), None);
+    }
+
+    #[test]
+    fn test_newer_version_older() {
+        assert_eq!(newer_version("2.0.0", "1.0.0"), None);
+    }
+
+    #[test]
+    fn test_newer_version_invalid_installed() {
+        assert_eq!(newer_version("not-semver", "1.0.0"), None);
+    }
+
+    #[test]
+    fn test_newer_version_invalid_available() {
+        assert_eq!(newer_version("1.0.0", "not-semver"), None);
     }
 
     #[test]

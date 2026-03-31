@@ -133,6 +133,13 @@ impl PluginStore {
         Err(format!("Plugin '{}' is not installed", name))
     }
 
+    /// Read a prompt source file from a plugin's directory
+    pub fn read_prompt_source(&self, plugin_name: &str, source_path: &str) -> Result<String, String> {
+        let path = self.dir.join(plugin_name).join(source_path);
+        std::fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read prompt '{}' from plugin '{}': {}", source_path, plugin_name, e))
+    }
+
     /// Check if a plugin is installed (supports both directory and legacy formats)
     pub fn exists(&self, name: &str) -> bool {
         self.dir.join(name).join("manifest.json").exists()
@@ -194,6 +201,7 @@ mod tests {
             no_auto_push: vec![],
             registry_index: None,
             download_url: None,
+            prompt_definitions: vec![],
         }
     }
 

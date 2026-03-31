@@ -7,6 +7,7 @@ mod http_server;
 mod installer;
 mod mcp;
 mod mcp_prompts;
+mod mcp_registry_tools;
 mod mcp_session;
 mod mcp_tools;
 mod plugin;

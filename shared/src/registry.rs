@@ -341,6 +341,7 @@ mod tests {
                 no_auto_push: vec![],
                 registry_index: None,
                 download_url: None,
+                prompt_definitions: vec![],
             },
             tags: vec![],
             download_url: None,
