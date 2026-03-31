@@ -1,8 +1,8 @@
 # Technical Debt & Enhancement Log
 
 **Last Updated:** 2026-03-30
-**Total Active Issues:** 7
-**Resolved This Month:** 42
+**Total Active Issues:** 5
+**Resolved This Month:** 44
 
 ---
 
@@ -18,9 +18,8 @@ _None_
 
 ### Medium
 
-- **M-025:** `ensure_registry_fresh` in `mcp_tools.rs` calls `fetch_all_registries` followed by `resolve_manifest_urls`, but `fetch_all_registries` already calls `resolve_manifest_urls` internally (registry.rs line 173). This double-resolves remote manifest URLs on every fresh fetch. Either remove the call in `ensure_registry_fresh` or remove the one inside `fetch_all_registries` and let all callers resolve explicitly. _(Commit 3b9f265)_
-- **M-026:** Version guard logic in `update_plugin` Tauri command (commands.rs:406-420) duplicates the comparison pattern from `collect_plugin_updates` (mcp_tools.rs). Extract a shared `is_update_available(installed: &str, available: &str) -> bool` helper. The test `test_version_guard_prevents_downgrade` also duplicates the logic inline rather than exercising the actual command. _(Commit 3b9f265)_
-- **M-024:** `mcp_tools.rs` is 2184+ lines with 8+ responsibilities (tool dispatch, rule collection, registry building, session gathering, plugin proxy, auth status, tool definitions, plugin update orchestration) -- this commit adds `call_update_plugins`, `ensure_registry_fresh`, and `collect_plugin_updates` (~80 more lines). Extract update-related functions into a `plugin_updates.rs` module. _(Commit ce2de40, worsened by 3b9f265)_
+- **M-024:** `mcp_tools.rs` is 2184+ lines with 8+ responsibilities (tool dispatch, rule collection, registry building, session gathering, plugin proxy, auth status, tool definitions, plugin update orchestration) -- extract update-related functions into a `plugin_updates.rs` module. _(Commit ce2de40, worsened by 3b9f265)_
+- **M-027:** No test coverage for `newer_version` helper in `shared/src/lib.rs` -- the function has 4 code paths (both valid + newer, both valid + equal/older, installed parse fails, available parse fails) with no tests. The existing `test_version_guard_prevents_downgrade` in `commands.rs` still duplicates comparison logic inline rather than exercising `newer_version` directly. _(Commit 846d72e)_
 - **M-022:** Duplicated auth-lookup block in `commands.rs` -- `get_plugin_auth_header` (lines 262-274) and `start_plugin_auth` (lines 203-215) contain identical 12-line pattern: lock registry, find manifest by name, extract auth config. Extract to `resolve_plugin_auth(state, plugin_name) -> Result<PluginAuth, String>` helper. _(Commit 2565475)_
 - **M-023:** No test coverage for `get_plugin_auth_header` command -- function has 3 code paths (stored token, OAuth refresh, no token error) with no tests. Prior commit (8e9fc5f) established the pattern of testing new commands. _(Commit 2565475)_
 
@@ -32,6 +31,11 @@ _None_
 ---
 
 ## Resolved Issues
+
+### Resolved 2026-03-30 (commit 846d72e)
+
+- **M-025:** `ensure_registry_fresh` double-resolved manifest URLs -- removed redundant `resolve_manifest_urls` call since `fetch_all_registries` already resolves internally
+- **M-026:** Duplicated semver comparison logic across `commands.rs`, `mcp_tools.rs`, and `plugin.rs` -- extracted shared `newer_version()` helper into `shared/src/lib.rs`, all three call sites now use it
 
 ### Resolved 2026-03-29
 
@@ -121,6 +125,7 @@ _None_
 
 | Commit | Date | Score | Rating |
 |--------|------|-------|--------|
+| 846d72e | 2026-03-30 | 88/100 | Good |
 | 3b9f265 | 2026-03-30 | 78/100 | Good |
 | ce2de40 | 2026-03-30 | 75/100 | Good |
 | c5f6d1c | 2026-03-30 | 82/100 | Good |

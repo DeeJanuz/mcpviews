@@ -52,6 +52,82 @@
           "tool_prefix": "ludflow__"
         }
       }
+    },
+    {
+      "name": "decidr",
+      "version": "1.0.0",
+      "description": "Decision governance — initiatives, projects, decisions, tasks, and bridges with approval workflows",
+      "author": "Ludflow",
+      "homepage": "https://github.com/DeeJanuz/decidr-plugin",
+      "manifest_url": "https://raw.githubusercontent.com/DeeJanuz/decidr-plugin/main/manifest.json",
+      "tags": ["governance", "decisions", "project-management", "approvals"],
+      "manifest": {
+        "name": "decidr",
+        "version": "1.0.0",
+        "download_url": "https://github.com/DeeJanuz/decidr-plugin/releases/download/v1.0.0/decidr.zip",
+        "renderers": {
+          "list_initiatives": "decidr_list",
+          "list_projects": "decidr_list",
+          "list_decisions": "decidr_list",
+          "list_tasks": "decidr_list",
+          "list_bridges": "decidr_list",
+          "get_initiative": "decidr_list",
+          "get_project": "decidr_list",
+          "get_decision": "decidr_list",
+          "get_task": "decidr_list",
+          "get_bridge": "decidr_list",
+          "search": "decidr_list",
+          "my_action_items": "decidr_dashboard",
+          "approve_decision": "decidr_list",
+          "reject_decision": "decidr_list",
+          "supersede_decision": "decidr_list",
+          "unsupersede_decision": "decidr_list",
+          "complete_task": "decidr_list",
+          "create_initiative": "decidr_list",
+          "create_project": "decidr_list",
+          "create_decision": "decidr_list",
+          "create_task": "decidr_list",
+          "create_bridge": "decidr_list",
+          "update_initiative": "decidr_list",
+          "update_project": "decidr_list",
+          "update_decision": "decidr_list",
+          "update_task": "decidr_list",
+          "update_bridge": "decidr_list",
+          "link_document": "decidr_list",
+          "list_entity_documents": "decidr_list",
+          "search_ludflow_documents": "decidr_list",
+          "find_entities_by_ludflow_document": "decidr_list"
+        },
+        "no_auto_push": [
+          "create_initiative",
+          "create_project",
+          "create_decision",
+          "create_task",
+          "create_bridge",
+          "update_initiative",
+          "update_project",
+          "update_decision",
+          "update_task",
+          "update_bridge",
+          "approve_decision",
+          "reject_decision",
+          "supersede_decision",
+          "unsupersede_decision",
+          "complete_task",
+          "link_document"
+        ],
+        "mcp": {
+          "url": "https://app.decidrmcp.com/api/mcp",
+          "auth": {
+            "type": "oauth",
+            "client_id": "fc99d041-1923-416c-8173-a4c02ae9b3a7",
+            "auth_url": "https://app.ludflow.com/oauth/authorize",
+            "token_url": "https://app.ludflow.com/oauth/token",
+            "scopes": ["mcp:tools"]
+          },
+          "tool_prefix": "decidr_"
+        }
+      }
     }
   ]
 }
