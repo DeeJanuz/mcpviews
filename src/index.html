@@ -20,10 +20,21 @@
           <span id="connection-dot" class="dot connected"></span>
           <span id="connection-text">Ready</span>
         </div>
-        <button id="theme-toggle" aria-label="Toggle theme" title="Toggle theme">
-          <span class="theme-icon-light">☀</span>
-          <span class="theme-icon-dark">☾</span>
-        </button>
+        <div id="header-actions">
+          <button id="theme-toggle" aria-label="Toggle theme" title="Toggle theme">
+            <span class="theme-icon-light">☀</span>
+            <span class="theme-icon-dark">☾</span>
+          </button>
+          <button id="apps-button" aria-label="Apps" title="Apps">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="1" y="1" width="5" height="5" rx="1" fill="currentColor"/>
+              <rect x="10" y="1" width="5" height="5" rx="1" fill="currentColor"/>
+              <rect x="1" y="10" width="5" height="5" rx="1" fill="currentColor"/>
+              <rect x="10" y="10" width="5" height="5" rx="1" fill="currentColor"/>
+            </svg>
+          </button>
+          <div id="apps-dropdown" class="apps-dropdown hidden"></div>
+        </div>
       </div>
       <div id="tab-bar"></div>
       <div id="content-area"></div>

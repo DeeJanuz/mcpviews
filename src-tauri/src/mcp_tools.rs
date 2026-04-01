@@ -1184,6 +1184,8 @@ fn builtin_renderer_definitions() -> Vec<RendererDef> {
             display_mode: None,
             invoke_schema: None,
             url_patterns: vec![],
+            standalone: false,
+            standalone_label: None,
         },
         RendererDef {
             name: "structured_data".into(),
@@ -1194,6 +1196,8 @@ fn builtin_renderer_definitions() -> Vec<RendererDef> {
             display_mode: None,
             invoke_schema: None,
             url_patterns: vec![],
+            standalone: false,
+            standalone_label: None,
             rule: Some(STRUCTURED_DATA_RULE.into()),
         },
     ]
@@ -1267,6 +1271,8 @@ fn synthesize_renderer_defs(
             display_mode: None,
             invoke_schema: None,
             url_patterns: vec![],
+            standalone: false,
+            standalone_label: None,
         });
     }
 
@@ -1802,6 +1808,8 @@ mod tests {
             display_mode: None,
             invoke_schema: None,
             url_patterns: vec![],
+            standalone: false,
+            standalone_label: None,
         }];
         let rules = collect_rules(&renderers, &[]);
         assert_eq!(rules.len(), 2);
@@ -1830,6 +1838,8 @@ mod tests {
             display_mode: None,
             invoke_schema: None,
             url_patterns: vec![],
+            standalone: false,
+            standalone_label: None,
         }];
         let rules = collect_rules(&renderers, &[]);
         // Only the renderer_selection rule, no renderer-specific rule
@@ -1850,6 +1860,8 @@ mod tests {
             display_mode: None,
             invoke_schema: None,
             url_patterns: vec![],
+            standalone: false,
+            standalone_label: None,
         }];
         let rules = collect_rules(&renderers, &[]);
         assert_eq!(rules.len(), 2);
@@ -1871,6 +1883,8 @@ mod tests {
             display_mode: None,
             invoke_schema: None,
             url_patterns: vec![],
+            standalone: false,
+            standalone_label: None,
         }];
         let rules = collect_rules(&renderers, &[]);
         assert_eq!(rules.len(), 2);
@@ -2360,6 +2374,8 @@ mod tests {
                 display_mode: None,
                 invoke_schema: None,
                 url_patterns: vec![],
+            standalone: false,
+            standalone_label: None,
             },
             RendererDef {
                 name: "search_results".into(),
@@ -2371,6 +2387,8 @@ mod tests {
                 display_mode: None,
                 invoke_schema: None,
                 url_patterns: vec![],
+            standalone: false,
+            standalone_label: None,
             },
         ];
         let rules = collect_builtin_rules(&renderers);
@@ -2394,6 +2412,8 @@ mod tests {
             display_mode: None,
             invoke_schema: None,
             url_patterns: vec![],
+            standalone: false,
+            standalone_label: None,
         }];
         let mut tool_rules = std::collections::HashMap::new();
         tool_rules.insert("search_codebase".to_string(), "Use search for queries.".to_string());
@@ -2425,6 +2445,8 @@ mod tests {
                 display_mode: None,
                 invoke_schema: None,
                 url_patterns: vec![],
+            standalone: false,
+            standalone_label: None,
             },
             RendererDef {
                 name: "code_units".into(),
@@ -2436,6 +2458,8 @@ mod tests {
                 display_mode: None,
                 invoke_schema: None,
                 url_patterns: vec![],
+            standalone: false,
+            standalone_label: None,
             },
         ];
         let manifest = make_manifest("test-plugin", vec![], std::collections::HashMap::new(), None);
@@ -2457,6 +2481,8 @@ mod tests {
             display_mode: None,
             invoke_schema: None,
             url_patterns: vec![],
+            standalone: false,
+            standalone_label: None,
         }];
         let manifest = make_manifest("test-plugin", vec![], std::collections::HashMap::new(), None);
         let rules = collect_plugin_rules(&renderers, &manifest, None, None);
@@ -2507,6 +2533,8 @@ mod tests {
                 display_mode: None,
                 invoke_schema: None,
                 url_patterns: vec![],
+            standalone: false,
+            standalone_label: None,
             },
             RendererDef {
                 name: "search_results".into(),
@@ -2518,6 +2546,8 @@ mod tests {
                 display_mode: None,
                 invoke_schema: None,
                 url_patterns: vec![],
+            standalone: false,
+            standalone_label: None,
             },
         ];
         let desc = build_data_description(&renderers, "Payload.");

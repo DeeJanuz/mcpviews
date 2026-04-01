@@ -162,6 +162,7 @@ fn main() {
             commands::clear_plugin_auth,
             commands::save_file,
             commands::get_renderer_registry,
+            commands::get_standalone_renderers,
             commands::set_native_theme,
         ])
         .on_window_event(|window, event| {

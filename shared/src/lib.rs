@@ -43,6 +43,12 @@ pub struct RendererDef {
     /// Glob patterns for auto-detecting URLs to convert to invocation links
     #[serde(default)]
     pub url_patterns: Vec<String>,
+    /// Whether this renderer can be launched standalone from the Apps menu
+    #[serde(default)]
+    pub standalone: bool,
+    /// Human-readable label for the Apps menu (e.g., "Dashboard")
+    #[serde(default)]
+    pub standalone_label: Option<String>,
 }
 
 fn default_renderer_scope() -> String {
@@ -597,6 +603,8 @@ mod tests {
             display_mode: None,
             invoke_schema: None,
             url_patterns: vec![],
+            standalone: false,
+            standalone_label: None,
         };
         let json = serde_json::to_string(&renderer).unwrap();
         let parsed: RendererDef = serde_json::from_str(&json).unwrap();

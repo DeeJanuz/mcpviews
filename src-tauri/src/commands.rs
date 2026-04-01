@@ -444,6 +444,36 @@ pub async fn save_file(
     }
 }
 
+#[tauri::command]
+pub fn get_standalone_renderers(state: State<'_, Arc<AppState>>) -> Vec<serde_json::Value> {
+    let registry = state.plugin_registry.lock().unwrap();
+    let mut results = Vec::new();
+
+    for manifest in registry.manifests.iter() {
+        let standalone_renderers: Vec<serde_json::Value> = manifest
+            .renderer_definitions
+            .iter()
+            .filter(|def| def.standalone)
+            .map(|def| {
+                serde_json::json!({
+                    "name": def.name,
+                    "label": def.standalone_label.as_deref().unwrap_or(&def.name),
+                    "description": def.description,
+                    "data_hint": def.data_hint,
+                })
+            })
+            .collect();
+
+        if !standalone_renderers.is_empty() {
+            results.push(serde_json::json!({
+                "plugin": manifest.name,
+                "renderers": standalone_renderers,
+            }));
+        }
+    }
+    results
+}
+
 /// Collect invocable renderer definitions (those with invoke_schema) from plugin manifests.
 pub fn collect_invocable_renderers(manifests: &[mcpviews_shared::PluginManifest]) -> Vec<serde_json::Value> {
     let mut results = Vec::new();
@@ -645,6 +675,8 @@ mod tests {
             display_mode: Some(mcpviews_shared::DisplayMode::Drawer),
             invoke_schema: Some("{ id: string }".to_string()),
             url_patterns: vec!["/decisions/*".to_string()],
+            standalone: false,
+            standalone_label: None,
         });
 
         // Also add a non-invocable renderer (no invoke_schema)
@@ -658,6 +690,8 @@ mod tests {
             display_mode: None,
             invoke_schema: None,
             url_patterns: vec![],
+            standalone: false,
+            standalone_label: None,
         });
 
         {

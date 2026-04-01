@@ -543,8 +543,132 @@
     }
   });
 
+  // --- Apps Button ---
+
+  function initAppsButton() {
+    var appsBtn = document.getElementById('apps-button');
+    var dropdown = document.getElementById('apps-dropdown');
+    if (!appsBtn || !dropdown) return;
+
+    appsBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      if (dropdown.classList.contains('hidden')) {
+        populateAppsDropdown(dropdown);
+        dropdown.classList.remove('hidden');
+      } else {
+        dropdown.classList.add('hidden');
+      }
+    });
+
+    document.addEventListener('click', function(e) {
+      if (!dropdown.contains(e.target) && e.target !== appsBtn) {
+        dropdown.classList.add('hidden');
+      }
+    });
+  }
+
+  function populateAppsDropdown(dropdown) {
+    if (!window.__TAURI__) {
+      dropdown.innerHTML = '<div class="apps-empty">Not available in browser mode</div>';
+      return;
+    }
+
+    window.__TAURI__.core.invoke('get_standalone_renderers')
+      .then(function(plugins) {
+        if (!plugins || plugins.length === 0) {
+          dropdown.innerHTML = '<div class="apps-empty">No apps available</div>';
+          return;
+        }
+
+        var html = '';
+        plugins.forEach(function(plugin) {
+          var pluginName = plugin.plugin.charAt(0).toUpperCase() + plugin.plugin.slice(1);
+          html += '<div class="apps-plugin-entry">';
+          html += '<div class="apps-plugin-header" data-plugin="' + plugin.plugin + '">';
+          html += '<span class="chevron">\u25B6</span>';
+          html += '<span>' + pluginName + '</span>';
+          html += '</div>';
+          html += '<div class="apps-renderer-list">';
+          plugin.renderers.forEach(function(renderer) {
+            html += '<div class="apps-renderer-item" data-renderer="' + renderer.name + '" data-plugin="' + plugin.plugin + '" title="' + (renderer.description || '') + '">';
+            html += renderer.label;
+            html += '</div>';
+          });
+          html += '</div>';
+          html += '</div>';
+        });
+        dropdown.innerHTML = html;
+
+        // Bind expand/collapse
+        dropdown.querySelectorAll('.apps-plugin-header').forEach(function(header) {
+          header.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var list = header.nextElementSibling;
+            var isExpanded = header.classList.contains('expanded');
+            // Collapse all
+            dropdown.querySelectorAll('.apps-plugin-header').forEach(function(h) {
+              h.classList.remove('expanded');
+              h.nextElementSibling.classList.remove('expanded');
+            });
+            if (!isExpanded) {
+              header.classList.add('expanded');
+              list.classList.add('expanded');
+            }
+          });
+        });
+
+        // Bind renderer clicks
+        dropdown.querySelectorAll('.apps-renderer-item').forEach(function(item) {
+          item.addEventListener('click', function() {
+            var rendererName = item.getAttribute('data-renderer');
+            dropdown.classList.add('hidden');
+            launchStandalone(rendererName);
+          });
+        });
+
+        // Auto-expand first plugin
+        var firstHeader = dropdown.querySelector('.apps-plugin-header');
+        if (firstHeader) {
+          firstHeader.classList.add('expanded');
+          firstHeader.nextElementSibling.classList.add('expanded');
+        }
+      })
+      .catch(function(err) {
+        console.error('[apps] Failed to load standalone renderers:', err);
+        dropdown.innerHTML = '<div class="apps-empty">Failed to load apps</div>';
+      });
+  }
+
+  function launchStandalone(rendererName) {
+    var renderer = getRenderer(rendererName);
+    if (!renderer) {
+      console.error('[apps] No renderer found for:', rendererName);
+      return;
+    }
+
+    // Generate a unique session ID
+    var sessionId = 'standalone-' + rendererName + '-' + Date.now();
+
+    // Create a synthetic session (matching the shape used by handlePush)
+    var session = {
+      toolName: 'standalone_launch',
+      contentType: rendererName,
+      data: {},  // standalone renderers fetch their own data
+      meta: { standalone: true },
+      toolArgs: {},
+      reviewRequired: false,
+      timeoutSecs: null,
+      timestamp: Date.now(),
+    };
+
+    // Store and render using existing session management
+    sessions.set(sessionId, session);
+    selectSession(sessionId);
+  }
+
   // --- Init ---
 
   renderEmpty();
+  initAppsButton();
   initTauri();
 })();

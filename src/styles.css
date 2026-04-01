@@ -434,6 +434,7 @@ body {
 }
 
 #main-header {
+  position: relative;
   padding: 12px 20px;
   border-bottom: 1px solid var(--glass-border);
   background: var(--glass-bg-heavy);
@@ -444,6 +445,13 @@ body {
   justify-content: space-between;
   min-height: 48px;
   box-shadow: var(--glass-inset-highlight);
+}
+
+#header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
 }
 
 #main-header .title {
@@ -505,6 +513,105 @@ body {
 .theme-icon-dark { display: none; }
 [data-theme="dark"] .theme-icon-light { display: none; }
 [data-theme="dark"] .theme-icon-dark { display: inline; }
+
+/* === Apps Button & Dropdown === */
+#apps-button {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: var(--border-radius-pill);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
+  padding: 0;
+}
+
+#apps-button:hover {
+  background: var(--glass-bg-heavy);
+  color: var(--text-primary);
+  box-shadow: var(--glass-shadow);
+}
+
+.apps-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 220px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 8px 0;
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.apps-dropdown.hidden {
+  display: none;
+}
+
+.apps-plugin-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+  user-select: none;
+}
+
+.apps-plugin-header:hover {
+  background: var(--hover-bg);
+}
+
+.apps-plugin-header .chevron {
+  transition: transform 0.2s;
+  font-size: 10px;
+}
+
+.apps-plugin-header.expanded .chevron {
+  transform: rotate(90deg);
+}
+
+.apps-renderer-list {
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height 0.2s ease;
+}
+
+.apps-renderer-list.expanded {
+  max-height: 200px;
+}
+
+.apps-renderer-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px 6px 32px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.apps-renderer-item:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.apps-empty {
+  padding: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
 
 /* Review buttons */
 .review-actions {
