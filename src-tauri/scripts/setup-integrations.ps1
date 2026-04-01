@@ -88,6 +88,16 @@ function Test-PlatformDetected {
 function Test-AlreadyConfigured {
     param([hashtable]$Platform)
 
+    # Claude Code CLI — check via `claude mcp list` for authoritative answer
+    if ($Platform.Name -eq "Claude Code CLI") {
+        $claudeCmd = Get-Command claude -ErrorAction SilentlyContinue
+        if ($claudeCmd) {
+            $list = & claude mcp list 2>$null
+            return ($list -match 'mcpviews')
+        }
+        return $false
+    }
+
     if (-not (Test-Path $Platform.ConfigPath)) { return $false }
 
     try {
@@ -174,7 +184,7 @@ function Install-JsonConfig {
 
     # Add mcpviews entry
     # Claude Desktop requires stdio transport via mcp-remote bridge
-    if ($Platform.Name -eq "Claude Desktop" -or $Platform.Name -eq "Claude Code CLI") {
+    if ($Platform.Name -eq "Claude Desktop") {
         $mcpMuxEntry = [PSCustomObject]@{
             command = "npx"
             args    = @("-y", "mcp-remote", $MCPVIEWS_URL)
@@ -227,6 +237,23 @@ url = "$MCPVIEWS_URL"
     }
 
     return $true
+}
+
+function Install-ClaudeCode {
+    $claudeCmd = Get-Command claude -ErrorAction SilentlyContinue
+    if (-not $claudeCmd) {
+        Write-Host "  FAILED (claude CLI not found in PATH)" -ForegroundColor Red
+        return $false
+    }
+
+    & claude mcp add --transport http --scope user mcpviews $MCPVIEWS_URL 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        return $true
+    }
+    else {
+        Write-Host "  FAILED (claude mcp add returned exit code $LASTEXITCODE)" -ForegroundColor Red
+        return $false
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -340,7 +367,10 @@ foreach ($idx in $toInstall) {
 
     try {
         $ok = $false
-        if ($platform.Format -eq "toml") {
+        if ($platform.Name -eq "Claude Code CLI") {
+            $ok = Install-ClaudeCode
+        }
+        elseif ($platform.Format -eq "toml") {
             $ok = Install-TomlConfig -Platform $platform
         }
         else {
