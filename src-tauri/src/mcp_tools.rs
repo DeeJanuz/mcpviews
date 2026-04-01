@@ -88,9 +88,23 @@ pub async fn call_tool(
                 Some(info) => {
                     let result =
                         proxy_plugin_tool_call(&client, &info.mcp_url, info.auth_header.as_deref(), &info.unprefixed_name, &arguments)
-                            .await?;
+                            .await;
 
-                    Ok(result)
+                    match result {
+                        Ok(val) => Ok(val),
+                        Err(ref e) if e.contains("HTTP 401") => {
+                            // Token may have been revoked server-side before expiry — force refresh and retry once
+                            if let Some(ref oauth) = info.oauth_info {
+                                if let Some(new_header) = crate::plugin::try_refresh_oauth(oauth, &client).await {
+                                    let retry = proxy_plugin_tool_call(&client, &info.mcp_url, Some(&new_header), &info.unprefixed_name, &arguments)
+                                        .await?;
+                                    return Ok(retry);
+                                }
+                            }
+                            result
+                        }
+                        Err(_) => result,
+                    }
                 }
                 None => Err(format!("Unknown tool: {}", name)),
             }
