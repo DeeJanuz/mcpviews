@@ -1,8 +1,8 @@
 # Technical Debt & Enhancement Log
 
 **Last Updated:** 2026-04-03
-**Total Active Issues:** 5
-**Resolved This Month:** 59
+**Total Active Issues:** 3
+**Resolved This Month:** 61
 
 ---
 
@@ -18,8 +18,6 @@ _None_
 
 ### Medium
 
-- **M-032:** No test coverage for `store_push` or `await_decision` in `http_server.rs` -- these are the two core async functions of the new non-blocking review flow. `store_push` -> `Pending` path and `await_decision` reconnection logic are untested. _(Commit bb32c45)_
-- **M-033:** `PushResponse` construction duplicated 4 times in `await_decision` (`http_server.rs`) and push parameter extraction duplicated between `call_push_review` and `call_push_impl` (`mcp_tools.rs`). Extract `build_push_response` helper and `extract_push_params` helper to DRY. _(Commit bb32c45)_
 - **M-028:** No async integration test coverage for `list_prompts`, or `get_prompt` -- `build_registry_entries` and `resolve_builtin_prompt` now have pure-function tests (a36294a), but remaining async functions (~5 code paths) still need integration tests. _(Commit 44e1f76, partially addressed 4d55dc6, a36294a)_
 - **M-023:** No test coverage for `get_plugin_auth_header` command -- function has 3 code paths (stored token, OAuth refresh, no token error) with no tests. Requires integration test infrastructure. _(Commit 2565475)_
 
@@ -33,6 +31,8 @@ _None_
 
 ### Resolved 2026-04-03
 
+- **M-033:** Extracted `From<ReviewDecision> for PushResponse` trait impl to replace 4 duplicated `PushResponse` construction sites in `await_decision`, and extracted `extract_push_params` helper with `PushParams` struct to DRY parameter extraction between `call_push_review` and `call_push_impl`. _(Commit bbc20f3)_
+- **M-032:** Added 17 tests for review flow: 9 tests for `ReviewState` watch channel (subscribe, multi-subscriber, remove_resolved, dismiss, nonexistent session, await via changed()), 6 tests for `extract_push_params` (all fields, defaults, non-review timeout, missing params, string normalization), 2 tests for `From<ReviewDecision>` conversion (full and minimal). _(Commit bbc20f3)_
 - **M-031:** `set_plugin_update_policy` and `get_plugin_update_policy` in `commands.rs` now accept `State<Arc<AppState>>` and use `state.plugin_store()` instead of constructing `PluginStore::new()` directly. Consistent with DIP pattern used by all other commands.
 - **M-030:** Extracted `evaluate_update_preferences(plugin_updates, store) -> Value` as a pure function in `mcp_tools.rs`. `gather_slim_session_data` now delegates to it, improving SRP and testability.
 - **M-029:** Added 7 unit tests for `evaluate_update_preferences` covering: no updates, default ask policy, always auto-update, skip matching version, skip different version re-ask, and mixed policies integration.
@@ -144,6 +144,9 @@ _None_
 
 | Commit | Date | Score | Rating |
 |--------|------|-------|--------|
+| f509ef2 | 2026-04-03 | 72/100 | Good |
+| c845b89 | 2026-04-03 | 82/100 | Good |
+| bbc20f3 | 2026-04-03 | 92/100 | Excellent |
 | bb32c45 | 2026-04-03 | 78/100 | Good |
 | 556252a | 2026-04-03 | 90/100 | Excellent |
 | 6fe89c5 | 2026-04-03 | 82/100 | Good |
