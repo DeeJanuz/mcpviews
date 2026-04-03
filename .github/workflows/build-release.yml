@@ -3,6 +3,10 @@ name: Build Release
 on:
   workflow_dispatch:
     inputs:
+      version:
+        description: 'Release version (e.g. 0.2.0). Leave empty for build-only without release.'
+        required: false
+        type: string
       platform:
         description: 'Platform to build'
         required: true
@@ -19,11 +23,64 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  prepare-release:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.version != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate version format
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
+            echo "::error::Invalid version format: $VERSION (expected semver like 1.2.3 or 1.2.3-beta.1)"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Check tag doesn't already exist
+        run: |
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "::error::Tag v$VERSION already exists"
+            exit 1
+          fi
+
+      - name: Bump version in all files
+        run: |
+          # package.json
+          jq --arg v "$VERSION" '.version = $v' package.json > tmp.json && mv tmp.json package.json
+
+          # tauri.conf.json
+          jq --arg v "$VERSION" '.version = $v' src-tauri/tauri.conf.json > tmp.json && mv tmp.json src-tauri/tauri.conf.json
+
+          # Cargo.toml files — replace first version = "..." line only
+          for f in src-tauri/Cargo.toml shared/Cargo.toml cli/Cargo.toml; do
+            sed -i "0,/^version = \".*\"/s//version = \"$VERSION\"/" "$f"
+          done
+
+      - name: Update changelog
+        run: |
+          DATE=$(date +%Y-%m-%d)
+          sed -i "s/^## \[Unreleased\]/## [Unreleased]\n\n## [$VERSION] - $DATE/" CHANGELOG.md
+
+      - name: Commit and tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "release: v$VERSION"
+          git tag "v$VERSION"
+          git push origin HEAD --tags
+
+      - name: Summary
+        run: echo "### Released v$VERSION" >> "$GITHUB_STEP_SUMMARY"
+
   build-macos:
     if: >-
-      github.event_name == 'push' ||
-      github.event.inputs.platform == 'all' ||
-      github.event.inputs.platform == 'macos'
+      (github.event_name == 'push') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.version == '' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos'))
     runs-on: macos-latest
     environment: production
     env:
@@ -159,9 +216,8 @@ jobs:
 
   build-windows:
     if: >-
-      github.event_name == 'push' ||
-      github.event.inputs.platform == 'all' ||
-      github.event.inputs.platform == 'windows'
+      (github.event_name == 'push') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.version == '' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows'))
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -224,6 +280,18 @@ jobs:
       contents: write
 
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Extract changelog for version
+        run: |
+          sed -n "/^## \[$VERSION\]/,/^## \[/p" CHANGELOG.md | sed '$d' > release_notes.txt
+          if [ ! -s release_notes.txt ]; then
+            echo "No changelog entry found for version $VERSION" > release_notes.txt
+          fi
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
 
@@ -234,4 +302,4 @@ jobs:
             mcpviews-macos-arm64/**/*.dmg
             mcpviews-windows/**/*.msi
             mcpviews-windows/**/*.exe
-          generate_release_notes: true
+          body_path: release_notes.txt

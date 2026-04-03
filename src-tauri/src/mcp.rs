@@ -84,7 +84,7 @@ async fn build_instructions(state: &Arc<TokioMutex<AsyncAppState>>) -> String {
             }
             instructions.push_str("\n");
         }
-        instructions.push_str("\n**Quick selection guide:** Use `rich_content` for prose, diagrams, and simple tables. Use `structured_data` for interactive tabular data with sort/filter, hierarchical rows, or change review workflows. Call `init_session` for full renderer documentation and examples.\n");
+        instructions.push_str("\n**Quick selection guide:** Use `rich_content` for prose, diagrams, and simple tables. Use `structured_data` for interactive tabular data with sort/filter, hierarchical rows, or change review workflows. **For batch MCP actions (2+ mutations), use `structured_data` with `push_review` to let the user accept/reject each action individually.** Call `init_session` for full renderer documentation and examples.\n");
     }
 
     instructions.push_str("\n## Sub-Agent Restriction\n\n");
