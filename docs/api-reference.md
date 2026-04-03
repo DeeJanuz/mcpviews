@@ -449,6 +449,24 @@ Toggle a registry source's enabled state.
 await invoke('toggle_registry_source', { url: 'https://example.com/registry.json' });
 ```
 
+### `set_plugin_update_policy`
+
+Set the update policy for a plugin. Persists to `~/.mcpviews/plugins/{plugin-name}/preferences.json`.
+
+```javascript
+await invoke('set_plugin_update_policy', { pluginName: 'my-plugin', policy: 'always' });
+// policy: 'always' (auto-update), 'ask' (prompt each time), 'skip' (skip updates)
+```
+
+### `get_plugin_update_policy`
+
+Get the current update policy for a plugin. Returns `"ask"` if no preference has been set.
+
+```javascript
+const policy = await invoke('get_plugin_update_policy', { pluginName: 'my-plugin' });
+// Returns: 'always' | 'ask' | 'skip'
+```
+
 ### `get_settings`
 
 Read the application settings from `~/.mcpviews/config.json`. Returns default (empty) settings if no config file exists or the file cannot be parsed.
@@ -608,6 +626,12 @@ Initialize MCPViews for the current session. Returns current renderer definition
       "rule": "When displaying content in MCPViews, choose the renderer based on data shape..."
     },
     {
+      "name": "bulk_action_review",
+      "category": "system",
+      "source": "built-in",
+      "rule": "When an agent plans 2 or more MCP tool calls that create, update, or delete..."
+    },
+    {
       "name": "rich_content_usage",
       "category": "renderer",
       "source": "built-in",
@@ -619,6 +643,7 @@ Initialize MCPViews for the current session. Returns current renderer definition
       "rule": "When presenting implementation plans..."
     }
   ],
+  "rules_version": "3",
   "plugin_status": [
     {
       "plugin": "my-plugin",
@@ -641,7 +666,8 @@ Initialize MCPViews for the current session. Returns current renderer definition
           "tools": ["search_codebase", "vector_search"]
         }
       ],
-      "renderers": ["search_results", "code_units"]
+      "renderers": ["search_results", "code_units"],
+      "plugin_rules": ["Always prefer vector search for semantic queries"]
     }
   ],
   "plugin_updates": [
@@ -650,15 +676,32 @@ Initialize MCPViews for the current session. Returns current renderer definition
       "installed_version": "1.0.0",
       "available_version": "1.2.0"
     }
-  ]
+  ],
+  "plugin_update_actions": {
+    "auto_update": [
+      { "name": "auto-plugin", "from": "1.0.0", "to": "1.1.0" }
+    ],
+    "ask_user": [
+      { "name": "my-plugin", "from": "1.0.0", "to": "1.2.0" }
+    ],
+    "instruction": "For plugins in auto_update: call update_plugins immediately..."
+  },
+  "rules_update": {
+    "current_version": "3",
+    "instruction": "Check if your persisted MCPViews rules file contains mcpviews-rules-version: 3..."
+  }
 }
 ```
 
-The `rules` array now contains only built-in (universal) rules -- the `renderer_selection` system rule and rules for universal-scope renderers. Plugin-specific rules are fetched on-demand via `get_plugin_docs`.
+The `rules` array now contains only built-in (universal) rules -- the `renderer_selection` and `bulk_action_review` system rules, plus rules for universal-scope renderers. Plugin-specific rules are fetched on-demand via `get_plugin_docs`.
+
+The `rules_version` string tracks the current version of built-in rules. Persistence instructions include a version marker (e.g., `<!-- mcpviews-rules-version: 3 -->`) so agents can detect when persisted rules are stale. The `rules_update` object provides instructions for checking and refreshing stale rules files.
 
 The `plugin_registry` array is a compact index of installed plugins, listing their tool groups, renderer names, and tags. Agents use this to identify which plugin to query for detailed docs, then call `get_plugin_docs` with the plugin name and optional filters.
 
 The `plugin_updates` array lists plugins that have newer versions available in the registry. Each entry includes the plugin name, installed version, and available version. Call `update_plugins` to apply updates.
+
+The `plugin_update_actions` object evaluates each pending update against the plugin's stored update preferences (from `preferences.json`). Plugins with `"always"` policy go into `auto_update` (proceed immediately); plugins with `"ask"` policy go into `ask_user` (prompt user for consent); plugins with `"skip"` policy for the specific available version are excluded from both lists. The `instruction` field guides the agent on how to handle each category.
 
 ### `get_plugin_docs`
 
@@ -722,6 +765,32 @@ Update installed plugins to their latest versions from the registry. Uses remote
   ]
 }
 ```
+
+### `save_update_preference`
+
+Save the user's update preference for a plugin after asking them about a pending update. Used by agents during the consent flow when `init_session` returns plugins in the `plugin_update_actions.ask_user` list.
+
+**Parameters:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `plugin` | string | Yes | Plugin name. |
+| `policy` | string | Yes | Update policy: `"once"` (update this time only, revert to ask), `"always"` (auto-update going forward), `"skip"` (skip this specific version). |
+| `version` | string | Yes | The version this preference applies to. |
+
+**Response:**
+```json
+{
+  "content": [{
+    "type": "text",
+    "text": "{ \"status\": \"saved\", \"plugin\": \"my-plugin\", \"policy\": \"always\", \"message\": \"Auto-update enabled for 'my-plugin'. Proceed with update_plugins, then call mcpviews_setup to re-persist rules.\" }"
+  }]
+}
+```
+
+**Policy behavior:**
+- `"once"` — Saves policy as `"ask"` (so next update will prompt again). Agent should proceed with `update_plugins`.
+- `"always"` — Saves policy as `"always"`. Future updates for this plugin will appear in `auto_update` instead of `ask_user`. Agent should proceed with `update_plugins`.
+- `"skip"` — Saves policy as `"skip"` with the specific version. This version will not appear in future `plugin_update_actions`. A newer version beyond the skipped one will re-prompt.
 
 ### `mcpviews_install_plugin`
 
@@ -838,6 +907,7 @@ One-time setup for MCPViews. Returns instructions for persisting a rule that ens
 ```json
 {
   "rules": [ ... ],
+  "rules_version": "3",
   "plugin_status": [ ... ],
   "persistence_instructions": "Persist each rule as a memory file...",
   "setup_instructions": "Add a rule in `.claude/rules/mcpviews-init.md` containing: ..."

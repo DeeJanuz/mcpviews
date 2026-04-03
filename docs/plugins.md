@@ -41,6 +41,7 @@ A plugin manifest is a JSON file with the following structure:
 | `registry_index` | object | No | Pre-authored compact index for the `init_session` plugin registry. Contains `summary` (string), `tags` (string[]), `tool_groups` (ToolGroupEntry[]), and `renderer_names` (string[]). If omitted, MCPViews auto-derives the index from the `renderers` map and tool cache. |
 | `mcp` | object | No | MCP server connection configuration. If omitted, the plugin provides renderers only (no remote tools). |
 | `prompt_definitions` | PromptDef[] | No | Plugin prompt definitions for guided workflows. Each entry defines a prompt that can be discovered via the MCP `prompts/list` protocol and fetched via `get_plugin_prompt` or `prompts/get`. Prompts are markdown files bundled with the plugin that support `{{arg}}` template substitution. |
+| `plugin_rules` | string[] | No | High-level behavioral rules for this plugin. These are returned by `init_session`, `mcpviews_setup`, and `get_plugin_docs` so agents see them every session. Each string is a rule that agents should follow when working with this plugin. Rules are always included regardless of tool/renderer filters in `get_plugin_docs`. Also included in the `plugin_registry` compact index returned by `init_session`. |
 | `download_url` | string | No | URL to a ZIP package for this plugin version. Used by `manifest_url`-based registry entries and the `update_plugins` tool. |
 
 ### RendererDef
@@ -383,9 +384,24 @@ When a plugin is removed:
 3. The desktop app unloads the plugin
 4. Cached tool data for the plugin is cleared
 
+### Plugin Preferences
+
+Each plugin can have per-plugin preferences stored in `~/.mcpviews/plugins/{plugin-name}/preferences.json`. Currently this controls update behavior:
+
+- **`update_policy`**: `"always"` (auto-update), `"ask"` (prompt user each time, default), or `"skip"` (skip a specific version)
+- **`update_policy_version`**: When policy is `"skip"`, the version to skip. New versions beyond this will re-prompt.
+- **`update_policy_source`**: `"chat"` (set via MCP tool) or `"ui"` (set via Plugin Manager toggle)
+
+Preferences are managed via:
+- The `save_update_preference` MCP tool (for agent-driven consent flows during chat)
+- The `set_plugin_update_policy` / `get_plugin_update_policy` Tauri IPC commands (for the Plugin Manager UI auto-update toggle)
+- The `PluginStore::load_preferences()` / `save_preferences()` methods in the shared crate
+
 ### Plugin Updates
 
 The `list_plugins` command now compares installed plugin versions against the cached registry and returns an `update_available` field with the new version string when an update exists. The `update_plugin` command downloads and installs the latest version from the registry, replacing the existing plugin.
+
+During `init_session`, MCPViews evaluates each pending update against the plugin's update preferences and returns a `plugin_update_actions` object with `auto_update` (proceed immediately) and `ask_user` (prompt user for consent) lists. For `ask_user` plugins, agents present three options: update this time only (`once`), always auto-update (`always`), or skip this version (`skip`), then persist the choice via `save_update_preference`.
 
 ### Plugin Reinstall
 

@@ -633,6 +633,23 @@ Per-tool behavioral rules (tool names are auto-prefixed):
 }
 ```
 
+### plugin_rules
+
+High-level behavioral rules for the plugin that agents see every session. Unlike `tool_rules` (which are per-tool and only returned when that tool's docs are requested), `plugin_rules` are always included in `init_session`, `mcpviews_setup`, and `get_plugin_docs` responses regardless of any tool/renderer filters.
+
+```json
+{
+  "plugin_rules": [
+    "Always prefer vector search over full-text search for semantic queries.",
+    "When displaying code analysis results, include the file path context."
+  ]
+}
+```
+
+Each rule is a plain string. Rules are returned in the `rules` array with `"category": "plugin"` and `"source": "<plugin-name>"`. They also appear in the `plugin_registry` compact index returned by `init_session`, so agents can see them without calling `get_plugin_docs`.
+
+Use `plugin_rules` for cross-cutting behavioral guidance that applies to the plugin as a whole. Use `tool_rules` for tool-specific instructions.
+
 ## Plugin Prompts
 
 Plugins can define guided workflow prompts that are discoverable via the MCP `prompts/list` protocol and fetchable via `get_plugin_prompt` or `prompts/get`. Prompts are markdown files bundled with the plugin that support template argument substitution.
