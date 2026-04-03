@@ -506,8 +506,9 @@ pub fn get_renderer_registry(state: State<'_, Arc<AppState>>) -> Vec<serde_json:
 pub fn set_plugin_update_policy(
     plugin_name: String,
     policy: String,
+    state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
-    let store = mcpviews_shared::plugin_store::PluginStore::new();
+    let store = state.plugin_store();
     let prefs = mcpviews_shared::PluginPreferences {
         update_policy: policy,
         update_policy_version: None,
@@ -517,8 +518,11 @@ pub fn set_plugin_update_policy(
 }
 
 #[tauri::command]
-pub fn get_plugin_update_policy(plugin_name: String) -> Result<String, String> {
-    let store = mcpviews_shared::plugin_store::PluginStore::new();
+pub fn get_plugin_update_policy(
+    plugin_name: String,
+    state: State<'_, Arc<AppState>>,
+) -> Result<String, String> {
+    let store = state.plugin_store();
     let prefs = store.load_preferences(&plugin_name);
     Ok(prefs.update_policy)
 }

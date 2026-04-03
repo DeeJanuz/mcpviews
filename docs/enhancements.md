@@ -1,8 +1,8 @@
 # Technical Debt & Enhancement Log
 
 **Last Updated:** 2026-04-03
-**Total Active Issues:** 6
-**Resolved This Month:** 56
+**Total Active Issues:** 3
+**Resolved This Month:** 59
 
 ---
 
@@ -18,9 +18,6 @@ _None_
 
 ### Medium
 
-- **M-031:** `set_plugin_update_policy` and `get_plugin_update_policy` in `commands.rs` instantiate `PluginStore::new()` directly instead of using the injected `AppState.plugin_store()`. Violates DIP and is inconsistent with the rest of the codebase. _(Commit 1924ce6)_
-- **M-030:** `gather_slim_session_data` in `mcp_tools.rs` inlines ~40 lines of update preference evaluation logic. Should be extracted into a pure function (e.g., `evaluate_update_actions`) for testability and SRP. _(Commit 1924ce6)_
-- **M-029:** No test coverage for `call_save_update_preference` MCP tool handler -- 3 policy branches plus error handling with no unit tests. _(Commit 1924ce6)_
 - **M-028:** No async integration test coverage for `list_prompts`, or `get_prompt` -- `build_registry_entries` and `resolve_builtin_prompt` now have pure-function tests (a36294a), but remaining async functions (~5 code paths) still need integration tests. _(Commit 44e1f76, partially addressed 4d55dc6, a36294a)_
 - **M-023:** No test coverage for `get_plugin_auth_header` command -- function has 3 code paths (stored token, OAuth refresh, no token error) with no tests. Requires integration test infrastructure. _(Commit 2565475)_
 
@@ -31,6 +28,12 @@ _None_
 ---
 
 ## Resolved Issues
+
+### Resolved 2026-04-03
+
+- **M-031:** `set_plugin_update_policy` and `get_plugin_update_policy` in `commands.rs` now accept `State<Arc<AppState>>` and use `state.plugin_store()` instead of constructing `PluginStore::new()` directly. Consistent with DIP pattern used by all other commands.
+- **M-030:** Extracted `evaluate_update_preferences(plugin_updates, store) -> Value` as a pure function in `mcp_tools.rs`. `gather_slim_session_data` now delegates to it, improving SRP and testability.
+- **M-029:** Added 7 unit tests for `evaluate_update_preferences` covering: no updates, default ask policy, always auto-update, skip matching version, skip different version re-ask, and mixed policies integration.
 
 ### Resolved 2026-03-31 (commit a36294a)
 

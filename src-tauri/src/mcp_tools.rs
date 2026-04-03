@@ -850,24 +850,16 @@ fn collect_plugin_updates(
         .collect()
 }
 
-async fn gather_slim_session_data(state: &Arc<TokioMutex<AsyncAppState>>) -> (Vec<Value>, Vec<Value>, Vec<Value>, Vec<Value>, Value) {
-    ensure_registry_fresh(state).await;
-
-    let state_guard = state.lock().await;
-    let all_renderers = available_renderers(&state_guard.inner);
-    let registry = state_guard.inner.plugin_registry.lock().unwrap();
-    let cached_registry = state_guard.inner.latest_registry.lock().unwrap();
-    let rules = collect_builtin_rules(&all_renderers);
-    let plugin_status = collect_plugin_auth_status(&registry.manifests);
-    let plugin_registry = build_plugin_registry(&registry.manifests, &registry.tool_cache);
-    let plugin_updates = collect_plugin_updates(&registry.manifests, &cached_registry);
-
-    // Evaluate update preferences for each pending update
-    let store = state_guard.inner.plugin_store();
+/// Evaluate update preferences for each pending plugin update.
+/// Returns a JSON value with `auto_update`, `ask_user`, and `instruction` fields.
+fn evaluate_update_preferences(
+    plugin_updates: &[Value],
+    store: &mcpviews_shared::plugin_store::PluginStore,
+) -> Value {
     let mut auto_update: Vec<Value> = Vec::new();
     let mut ask_user: Vec<Value> = Vec::new();
 
-    for update in &plugin_updates {
+    for update in plugin_updates {
         let name = update["name"].as_str().unwrap_or("");
         let available_version = update["available_version"].as_str().unwrap_or("");
         let installed_version = update["installed_version"].as_str().unwrap_or("");
@@ -898,11 +890,27 @@ async fn gather_slim_session_data(state: &Arc<TokioMutex<AsyncAppState>>) -> (Ve
         }
     }
 
-    let plugin_update_actions = serde_json::json!({
+    serde_json::json!({
         "auto_update": auto_update,
         "ask_user": ask_user,
         "instruction": "For plugins in auto_update: call update_plugins immediately, then call mcpviews_setup to re-persist rules. For plugins in ask_user: ask the user with three options: (1) Yes, update this time (2) Yes, always auto-update (3) Skip this update. Then call save_update_preference with the user's choice before proceeding."
-    });
+    })
+}
+
+async fn gather_slim_session_data(state: &Arc<TokioMutex<AsyncAppState>>) -> (Vec<Value>, Vec<Value>, Vec<Value>, Vec<Value>, Value) {
+    ensure_registry_fresh(state).await;
+
+    let state_guard = state.lock().await;
+    let all_renderers = available_renderers(&state_guard.inner);
+    let registry = state_guard.inner.plugin_registry.lock().unwrap();
+    let cached_registry = state_guard.inner.latest_registry.lock().unwrap();
+    let rules = collect_builtin_rules(&all_renderers);
+    let plugin_status = collect_plugin_auth_status(&registry.manifests);
+    let plugin_registry = build_plugin_registry(&registry.manifests, &registry.tool_cache);
+    let plugin_updates = collect_plugin_updates(&registry.manifests, &cached_registry);
+
+    let store = state_guard.inner.plugin_store();
+    let plugin_update_actions = evaluate_update_preferences(&plugin_updates, store);
 
     (rules, plugin_status, plugin_registry, plugin_updates, plugin_update_actions)
 }
@@ -3040,5 +3048,128 @@ mod tests {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
         assert!(!trigger_auth, "trigger_auth false should remain false");
+    }
+
+    // ─── evaluate_update_preferences tests ───
+
+    #[test]
+    fn test_evaluate_update_preferences_no_updates() {
+        let store = mcpviews_shared::plugin_store::PluginStore::with_dir(
+            tempfile::tempdir().unwrap().into_path(),
+        );
+        let result = evaluate_update_preferences(&[], &store);
+        assert!(result["auto_update"].as_array().unwrap().is_empty());
+        assert!(result["ask_user"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_evaluate_update_preferences_default_ask() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = mcpviews_shared::plugin_store::PluginStore::with_dir(dir.path().to_path_buf());
+        // No preferences saved => default "ask" policy
+        let updates = vec![serde_json::json!({
+            "name": "test-plugin",
+            "installed_version": "1.0.0",
+            "available_version": "2.0.0",
+        })];
+        let result = evaluate_update_preferences(&updates, &store);
+        assert!(result["auto_update"].as_array().unwrap().is_empty());
+        let ask = result["ask_user"].as_array().unwrap();
+        assert_eq!(ask.len(), 1);
+        assert_eq!(ask[0]["name"], "test-plugin");
+        assert_eq!(ask[0]["from"], "1.0.0");
+        assert_eq!(ask[0]["to"], "2.0.0");
+    }
+
+    #[test]
+    fn test_evaluate_update_preferences_always_auto_updates() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = mcpviews_shared::plugin_store::PluginStore::with_dir(dir.path().to_path_buf());
+        store.save_preferences("auto-plugin", &mcpviews_shared::PluginPreferences {
+            update_policy: "always".to_string(),
+            update_policy_version: None,
+            update_policy_source: "chat".to_string(),
+        }).unwrap();
+        let updates = vec![serde_json::json!({
+            "name": "auto-plugin",
+            "installed_version": "1.0.0",
+            "available_version": "2.0.0",
+        })];
+        let result = evaluate_update_preferences(&updates, &store);
+        let auto = result["auto_update"].as_array().unwrap();
+        assert_eq!(auto.len(), 1);
+        assert_eq!(auto[0]["name"], "auto-plugin");
+        assert!(result["ask_user"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_evaluate_update_preferences_skip_matching_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = mcpviews_shared::plugin_store::PluginStore::with_dir(dir.path().to_path_buf());
+        store.save_preferences("skip-plugin", &mcpviews_shared::PluginPreferences {
+            update_policy: "skip".to_string(),
+            update_policy_version: Some("2.0.0".to_string()),
+            update_policy_source: "chat".to_string(),
+        }).unwrap();
+        let updates = vec![serde_json::json!({
+            "name": "skip-plugin",
+            "installed_version": "1.0.0",
+            "available_version": "2.0.0",
+        })];
+        let result = evaluate_update_preferences(&updates, &store);
+        // Skipped version matches => excluded from both lists
+        assert!(result["auto_update"].as_array().unwrap().is_empty());
+        assert!(result["ask_user"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_evaluate_update_preferences_skip_different_version_reasks() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = mcpviews_shared::plugin_store::PluginStore::with_dir(dir.path().to_path_buf());
+        store.save_preferences("skip-plugin", &mcpviews_shared::PluginPreferences {
+            update_policy: "skip".to_string(),
+            update_policy_version: Some("2.0.0".to_string()),
+            update_policy_source: "chat".to_string(),
+        }).unwrap();
+        let updates = vec![serde_json::json!({
+            "name": "skip-plugin",
+            "installed_version": "1.0.0",
+            "available_version": "3.0.0",
+        })];
+        let result = evaluate_update_preferences(&updates, &store);
+        // New version (3.0.0) doesn't match skipped version (2.0.0) => re-ask
+        assert!(result["auto_update"].as_array().unwrap().is_empty());
+        let ask = result["ask_user"].as_array().unwrap();
+        assert_eq!(ask.len(), 1);
+        assert_eq!(ask[0]["name"], "skip-plugin");
+    }
+
+    #[test]
+    fn test_evaluate_update_preferences_mixed_policies() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = mcpviews_shared::plugin_store::PluginStore::with_dir(dir.path().to_path_buf());
+        store.save_preferences("always-plugin", &mcpviews_shared::PluginPreferences {
+            update_policy: "always".to_string(),
+            update_policy_version: None,
+            update_policy_source: "chat".to_string(),
+        }).unwrap();
+        store.save_preferences("skip-plugin", &mcpviews_shared::PluginPreferences {
+            update_policy: "skip".to_string(),
+            update_policy_version: Some("2.0.0".to_string()),
+            update_policy_source: "chat".to_string(),
+        }).unwrap();
+        // "ask-plugin" has no saved preferences => default "ask"
+        let updates = vec![
+            serde_json::json!({"name": "always-plugin", "installed_version": "1.0.0", "available_version": "2.0.0"}),
+            serde_json::json!({"name": "skip-plugin", "installed_version": "1.0.0", "available_version": "2.0.0"}),
+            serde_json::json!({"name": "ask-plugin", "installed_version": "1.0.0", "available_version": "2.0.0"}),
+        ];
+        let result = evaluate_update_preferences(&updates, &store);
+        let auto = result["auto_update"].as_array().unwrap();
+        assert_eq!(auto.len(), 1);
+        assert_eq!(auto[0]["name"], "always-plugin");
+        let ask = result["ask_user"].as_array().unwrap();
+        assert_eq!(ask.len(), 1);
+        assert_eq!(ask[0]["name"], "ask-plugin");
     }
 }
