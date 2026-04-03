@@ -252,24 +252,9 @@ async fn call_push_review(
     arguments: Value,
     state: &Arc<TokioMutex<AsyncAppState>>,
 ) -> Result<Value, String> {
-    let tool_name = arguments
-        .get("tool_name")
-        .and_then(|v| v.as_str())
-        .ok_or("Missing required parameter: tool_name")?
-        .to_string();
-    let data = {
-        let raw = arguments
-            .get("data")
-            .ok_or("Missing required parameter: data")?;
-        normalize_data_param(raw)
-    };
-    let meta = arguments.get("meta").cloned();
-    let timeout = arguments
-        .get("timeout")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(120);
+    let params = extract_push_params(&arguments, true)?;
 
-    let result = store_push(state, tool_name, None, data, meta, true, timeout, None).await;
+    let result = store_push(state, params.tool_name, None, params.data, params.meta, true, params.timeout, None).await;
 
     match result {
         ExecutePushResult::Pending { session_id } => Ok(serde_json::json!({
@@ -318,11 +303,18 @@ fn normalize_data_param(raw: &Value) -> Value {
     }
 }
 
-async fn call_push_impl(
-    arguments: Value,
-    state: &Arc<TokioMutex<AsyncAppState>>,
-    review_required: bool,
-) -> Result<Value, String> {
+/// Common parameters extracted from push_content / push_review arguments.
+#[derive(Debug)]
+struct PushParams {
+    tool_name: String,
+    data: Value,
+    meta: Option<Value>,
+    timeout: u64,
+}
+
+/// Extract the common parameters shared by `call_push_review` and `call_push_impl`.
+/// When `review` is true, timeout defaults to 120; when false, timeout is always 120.
+fn extract_push_params(arguments: &Value, review: bool) -> Result<PushParams, String> {
     let tool_name = arguments
         .get("tool_name")
         .and_then(|v| v.as_str())
@@ -335,7 +327,7 @@ async fn call_push_impl(
         normalize_data_param(raw)
     };
     let meta = arguments.get("meta").cloned();
-    let timeout = if review_required {
+    let timeout = if review {
         arguments
             .get("timeout")
             .and_then(|v| v.as_u64())
@@ -343,15 +335,24 @@ async fn call_push_impl(
     } else {
         120
     };
+    Ok(PushParams { tool_name, data, meta, timeout })
+}
+
+async fn call_push_impl(
+    arguments: Value,
+    state: &Arc<TokioMutex<AsyncAppState>>,
+    review_required: bool,
+) -> Result<Value, String> {
+    let params = extract_push_params(&arguments, review_required)?;
 
     let result = execute_push(
         state,
-        tool_name,
+        params.tool_name,
         None, // tool_args
-        data,
-        meta,
+        params.data,
+        params.meta,
         review_required,
-        timeout,
+        params.timeout,
         None, // session_id
     )
     .await;
@@ -3244,5 +3245,73 @@ mod tests {
         let ask = result["ask_user"].as_array().unwrap();
         assert_eq!(ask.len(), 1);
         assert_eq!(ask[0]["name"], "ask-plugin");
+    }
+
+    // ─── extract_push_params tests ───
+
+    #[test]
+    fn test_extract_push_params_all_fields() {
+        let args = serde_json::json!({
+            "tool_name": "rich_content",
+            "data": {"title": "Hello"},
+            "meta": {"key": "val"},
+            "timeout": 60
+        });
+        let params = extract_push_params(&args, true).unwrap();
+        assert_eq!(params.tool_name, "rich_content");
+        assert_eq!(params.data, serde_json::json!({"title": "Hello"}));
+        assert_eq!(params.meta, Some(serde_json::json!({"key": "val"})));
+        assert_eq!(params.timeout, 60);
+    }
+
+    #[test]
+    fn test_extract_push_params_review_default_timeout() {
+        let args = serde_json::json!({
+            "tool_name": "structured_data",
+            "data": {"tables": []}
+        });
+        let params = extract_push_params(&args, true).unwrap();
+        assert_eq!(params.timeout, 120);
+        assert!(params.meta.is_none());
+    }
+
+    #[test]
+    fn test_extract_push_params_non_review_ignores_timeout() {
+        let args = serde_json::json!({
+            "tool_name": "rich_content",
+            "data": {"body": "text"},
+            "timeout": 999
+        });
+        let params = extract_push_params(&args, false).unwrap();
+        // Non-review always uses 120 regardless of what's in arguments
+        assert_eq!(params.timeout, 120);
+    }
+
+    #[test]
+    fn test_extract_push_params_missing_tool_name() {
+        let args = serde_json::json!({
+            "data": {"body": "text"}
+        });
+        let err = extract_push_params(&args, false).unwrap_err();
+        assert!(err.contains("tool_name"));
+    }
+
+    #[test]
+    fn test_extract_push_params_missing_data() {
+        let args = serde_json::json!({
+            "tool_name": "rich_content"
+        });
+        let err = extract_push_params(&args, true).unwrap_err();
+        assert!(err.contains("data"));
+    }
+
+    #[test]
+    fn test_extract_push_params_string_data_normalized() {
+        let args = serde_json::json!({
+            "tool_name": "rich_content",
+            "data": r#"{"title":"parsed"}"#
+        });
+        let params = extract_push_params(&args, false).unwrap();
+        assert_eq!(params.data, serde_json::json!({"title": "parsed"}));
     }
 }

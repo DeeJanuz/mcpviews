@@ -21,6 +21,7 @@ use tower_http::cors::{Any, CorsLayer};
 
 use crate::mcp;
 use crate::plugin::PluginRegistry;
+use crate::review::ReviewDecision;
 use crate::session::PreviewSession;
 use crate::state::AppState;
 
@@ -69,6 +70,20 @@ pub struct PushResponse {
     pub modifications: Option<HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub additions: Option<serde_json::Value>,
+}
+
+impl From<ReviewDecision> for PushResponse {
+    fn from(d: ReviewDecision) -> Self {
+        PushResponse {
+            session_id: d.session_id,
+            status: d.status,
+            decision: d.decision,
+            operation_decisions: d.operation_decisions,
+            comments: d.comments,
+            modifications: d.modifications,
+            additions: d.additions,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -183,7 +198,7 @@ pub async fn await_decision(
         match reviews.subscribe(session_id) {
             Some(rx) => rx,
             None => {
-                return ExecutePushResult::Decision(PushResponse {
+                return ExecutePushResult::Decision(ReviewDecision {
                     session_id: session_id.to_string(),
                     status: "error".to_string(),
                     decision: Some("not_found".to_string()),
@@ -191,7 +206,7 @@ pub async fn await_decision(
                     comments: None,
                     modifications: None,
                     additions: None,
-                });
+                }.into());
             }
         }
     };
@@ -207,15 +222,7 @@ pub async fn await_decision(
             drop(deadlines);
             let mut reviews = state_guard.inner.reviews.lock().unwrap();
             reviews.remove_resolved(session_id);
-            return ExecutePushResult::Decision(PushResponse {
-                session_id: decision.session_id,
-                status: decision.status,
-                decision: decision.decision,
-                operation_decisions: decision.operation_decisions,
-                comments: decision.comments,
-                modifications: decision.modifications,
-                additions: decision.additions,
-            });
+            return ExecutePushResult::Decision(decision.into());
         }
     }
 
@@ -227,7 +234,7 @@ pub async fn await_decision(
             Some((dl, _)) => dl.clone(),
             None => {
                 // No deadline means review already cleaned up
-                return ExecutePushResult::Decision(PushResponse {
+                return ExecutePushResult::Decision(ReviewDecision {
                     session_id: session_id.to_string(),
                     status: "error".to_string(),
                     decision: Some("expired".to_string()),
@@ -235,7 +242,7 @@ pub async fn await_decision(
                     comments: None,
                     modifications: None,
                     additions: None,
-                });
+                }.into());
             }
         }
     };
@@ -301,15 +308,7 @@ pub async fn await_decision(
             let state_guard = state.lock().await;
             let mut reviews = state_guard.inner.reviews.lock().unwrap();
             reviews.remove_resolved(&session_id_owned);
-            ExecutePushResult::Decision(PushResponse {
-                session_id: decision.session_id,
-                status: decision.status,
-                decision: decision.decision,
-                operation_decisions: decision.operation_decisions,
-                comments: decision.comments,
-                modifications: decision.modifications,
-                additions: decision.additions,
-            })
+            ExecutePushResult::Decision(decision.into())
         }
         None => {
             // Timeout or channel dropped — dismiss
@@ -317,7 +316,7 @@ pub async fn await_decision(
             let mut reviews = state_guard.inner.reviews.lock().unwrap();
             reviews.dismiss(&session_id_owned);
             reviews.remove_resolved(&session_id_owned);
-            ExecutePushResult::Decision(PushResponse {
+            ExecutePushResult::Decision(ReviewDecision {
                 session_id: session_id_owned,
                 status: "decision_received".to_string(),
                 decision: Some("dismissed".to_string()),
@@ -325,7 +324,7 @@ pub async fn await_decision(
                 comments: None,
                 modifications: None,
                 additions: None,
-            })
+            }.into())
         }
     }
 }
@@ -708,6 +707,7 @@ fn resolve_content_type(registry: &PluginRegistry, tool_name: &str) -> String {
 mod tests {
     use super::*;
     use crate::plugin::PluginRegistry;
+    use crate::review::ReviewDecision;
     use mcpviews_shared::PluginManifest;
 
     fn empty_registry() -> (PluginRegistry, tempfile::TempDir) {
@@ -872,5 +872,58 @@ mod tests {
         assert_eq!(resolve_content_type(&registry, "tool_a"), "renderer_a");
         assert_eq!(resolve_content_type(&registry, "tool_b"), "renderer_b");
         assert_eq!(resolve_content_type(&registry, "tool_c"), "tool_c");
+    }
+
+    #[test]
+    fn test_push_response_from_review_decision() {
+        let mut op_decisions = HashMap::new();
+        op_decisions.insert("op1".to_string(), "approved".to_string());
+        let mut comments = HashMap::new();
+        comments.insert("row1".to_string(), "looks good".to_string());
+        let mut modifications = HashMap::new();
+        modifications.insert("field1".to_string(), "new_value".to_string());
+
+        let decision = ReviewDecision {
+            session_id: "test-session".to_string(),
+            status: "decision_received".to_string(),
+            decision: Some("approved".to_string()),
+            operation_decisions: Some(op_decisions.clone()),
+            comments: Some(comments.clone()),
+            modifications: Some(modifications.clone()),
+            additions: Some(serde_json::json!({"extra": "data"})),
+        };
+
+        let response: PushResponse = decision.into();
+
+        assert_eq!(response.session_id, "test-session");
+        assert_eq!(response.status, "decision_received");
+        assert_eq!(response.decision, Some("approved".to_string()));
+        assert_eq!(response.operation_decisions, Some(op_decisions));
+        assert_eq!(response.comments, Some(comments));
+        assert_eq!(response.modifications, Some(modifications));
+        assert_eq!(response.additions, Some(serde_json::json!({"extra": "data"})));
+    }
+
+    #[test]
+    fn test_push_response_from_review_decision_minimal() {
+        let decision = ReviewDecision {
+            session_id: "s1".to_string(),
+            status: "error".to_string(),
+            decision: Some("not_found".to_string()),
+            operation_decisions: None,
+            comments: None,
+            modifications: None,
+            additions: None,
+        };
+
+        let response = PushResponse::from(decision);
+
+        assert_eq!(response.session_id, "s1");
+        assert_eq!(response.status, "error");
+        assert_eq!(response.decision, Some("not_found".to_string()));
+        assert!(response.operation_decisions.is_none());
+        assert!(response.comments.is_none());
+        assert!(response.modifications.is_none());
+        assert!(response.additions.is_none());
     }
 }

@@ -84,3 +84,138 @@ impl ReviewState {
         self.pending.contains_key(session_id)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_decision(session_id: &str, status: &str, decision: Option<&str>) -> ReviewDecision {
+        ReviewDecision {
+            session_id: session_id.to_string(),
+            status: status.to_string(),
+            decision: decision.map(|s| s.to_string()),
+            operation_decisions: None,
+            comments: None,
+            modifications: None,
+            additions: None,
+        }
+    }
+
+    #[test]
+    fn subscribe_returns_receiver_that_gets_decisions_from_resolve() {
+        let mut state = ReviewState::new();
+        state.add_pending("s1".to_string());
+
+        let rx = state.subscribe("s1").expect("subscribe should return Some");
+        let decision = make_decision("s1", "decision_received", Some("approved"));
+        state.resolve("s1", decision.clone());
+
+        let val = rx.borrow().clone().expect("should have a decision");
+        assert_eq!(val.session_id, "s1");
+        assert_eq!(val.decision, Some("approved".to_string()));
+    }
+
+    #[test]
+    fn subscribe_on_nonexistent_session_returns_none() {
+        let state = ReviewState::new();
+        assert!(state.subscribe("nonexistent").is_none());
+    }
+
+    #[test]
+    fn multiple_subscribers_all_receive_decision() {
+        let mut state = ReviewState::new();
+        state.add_pending("s2".to_string());
+
+        let rx1 = state.subscribe("s2").unwrap();
+        let rx2 = state.subscribe("s2").unwrap();
+        let rx3 = state.subscribe("s2").unwrap();
+
+        let decision = make_decision("s2", "decision_received", Some("rejected"));
+        state.resolve("s2", decision);
+
+        for rx in [rx1, rx2, rx3] {
+            let val = rx.borrow().clone().expect("should have decision");
+            assert_eq!(val.decision, Some("rejected".to_string()));
+        }
+    }
+
+    #[test]
+    fn remove_resolved_cleans_up() {
+        let mut state = ReviewState::new();
+        state.add_pending("s3".to_string());
+        assert!(state.has_pending("s3"));
+
+        state.remove_resolved("s3");
+        assert!(!state.has_pending("s3"));
+        assert!(state.subscribe("s3").is_none());
+    }
+
+    #[test]
+    fn decision_readable_via_borrow_after_resolve() {
+        let mut state = ReviewState::new();
+        let rx = state.add_pending("s4".to_string());
+
+        // Before resolve, borrow returns None
+        assert!(rx.borrow().is_none());
+
+        let decision = make_decision("s4", "decision_received", Some("approved"));
+        state.resolve("s4", decision);
+
+        // After resolve, borrow returns the decision without needing changed()
+        let val = rx.borrow().clone().expect("should have decision after resolve");
+        assert_eq!(val.session_id, "s4");
+        assert_eq!(val.status, "decision_received");
+        assert_eq!(val.decision, Some("approved".to_string()));
+    }
+
+    #[tokio::test]
+    async fn await_decision_via_watch_channel() {
+        let mut state = ReviewState::new();
+        state.add_pending("s5".to_string());
+        let mut rx = state.subscribe("s5").unwrap();
+
+        // Spawn a task that resolves after a short delay
+        let decision = make_decision("s5", "decision_received", Some("approved"));
+        let handle = tokio::spawn({
+            async move {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                // We can't mutate state from here, so we test the channel directly
+            }
+        });
+
+        // Resolve from this context instead
+        state.resolve("s5", decision);
+
+        // changed() should complete
+        rx.changed().await.expect("should receive change");
+        let val = rx.borrow().clone().expect("should have decision");
+        assert_eq!(val.decision, Some("approved".to_string()));
+
+        handle.await.unwrap();
+    }
+
+    #[test]
+    fn dismiss_sends_dismissed_decision() {
+        let mut state = ReviewState::new();
+        let rx = state.add_pending("s6".to_string());
+
+        state.dismiss("s6");
+
+        let val = rx.borrow().clone().expect("should have decision after dismiss");
+        assert_eq!(val.decision, Some("dismissed".to_string()));
+        assert_eq!(val.status, "decision_received");
+    }
+
+    #[test]
+    fn resolve_on_nonexistent_returns_false() {
+        let mut state = ReviewState::new();
+        let decision = make_decision("nope", "decision_received", Some("approved"));
+        assert!(!state.resolve("nope", decision));
+    }
+
+    #[test]
+    fn dismiss_on_nonexistent_returns_false() {
+        let mut state = ReviewState::new();
+        assert!(!state.dismiss("nope"));
+    }
+}
