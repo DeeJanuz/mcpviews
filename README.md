@@ -6,6 +6,19 @@ The real power is the plugin system. Each plugin pairs an MCP server with a cust
 
 This blurs the line between agentic workflows and traditional applications. Instead of choosing between an AI-only flow or a manual UI, MCPViews lets both happen simultaneously — agents and humans collaborating through a shared visual layer.
 
+```mermaid
+graph LR
+    A[AI Agent] <-->|MCP Protocol| B[MCPViews]
+    B <-->|Plugin System| C[Plugin MCP Servers]
+    B -->|Rich Display| D[Companion Window]
+    D -->|User Actions| B
+
+    style A fill:#6366f1,stroke:#4f46e5,color:#fff
+    style B fill:#1e1b4b,stroke:#6366f1,color:#fff
+    style C fill:#6366f1,stroke:#4f46e5,color:#fff
+    style D fill:#4f46e5,stroke:#3730a3,color:#fff
+```
+
 ## Quick Start
 
 ### 1. Install MCPViews

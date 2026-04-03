@@ -178,6 +178,34 @@ Authentication is configured via a tagged union on the `type` field. Three types
 | `token_url` | string | Yes | Token exchange endpoint URL. |
 | `scopes` | string[] | No | OAuth scopes to request. Defaults to empty. |
 
+The following flowchart shows how auth tokens are resolved for each auth type.
+
+```mermaid
+flowchart TD
+    Start([Resolve Auth]) --> AuthType{Auth Type?}
+
+    AuthType -->|Bearer| B_Stored{Check stored token}
+    B_Stored -->|Found| B_Header([Use Authorization: Bearer header])
+    B_Stored -->|Not found| B_Env{Check env var}
+    B_Env -->|Found| B_Header
+    B_Env -->|Not found| B_Fail([Auth not configured])
+
+    AuthType -->|ApiKey| K_Stored{Check stored token}
+    K_Stored -->|Found| K_Header([Use custom header])
+    K_Stored -->|Not found| K_Env{Check env var}
+    K_Env -->|Found| K_Header
+    K_Env -->|Not found| K_Fail([Auth not configured])
+
+    AuthType -->|OAuth| O_Stored{Check stored token}
+    O_Stored -->|Valid| O_Header([Use Authorization: Bearer header])
+    O_Stored -->|Expired| O_Refresh{Has refresh_token?}
+    O_Refresh -->|Yes| O_Try[Refresh token grant]
+    O_Try -->|Success| O_Header
+    O_Try -->|Failure| O_Fail([Re-authentication required])
+    O_Refresh -->|No| O_Fail
+    O_Stored -->|Not found| O_Fail
+```
+
 ## ZIP Plugin Packages
 
 Plugins can be distributed as ZIP archives containing a `manifest.json` and optional assets (renderers, icons, etc.). The ZIP format supports:
@@ -276,6 +304,18 @@ The legacy single `registry_url` key is automatically migrated: if `registry_sou
 
 Sources can be managed via the IPC commands: `get_registry_sources`, `add_registry_source`, `remove_registry_source`, `toggle_registry_source`.
 
+The following flowchart shows how registry data is resolved from multiple sources with caching and fallback.
+
+```mermaid
+flowchart TD
+    Start([Fetch Registry]) --> FetchAll[Fetch from all enabled sources]
+    FetchAll --> Merge[Merge results - last source wins]
+    Merge --> Cache[Cache per source with 1hr TTL]
+    Cache --> Done([Return merged registry])
+    FetchAll -->|All sources fail| Bundled[Use bundled registry]
+    Bundled --> Done
+```
+
 ## Developing a Plugin
 
 To create an MCP server that works with MCPViews:
@@ -354,6 +394,19 @@ Then call one of your tools via the push API to verify the renderer displays cor
 To list your plugin in the official registry, submit a pull request adding a `RegistryEntry` to the registry's `registry.json` file. Include a description, tags, and your manifest.
 
 ## Plugin Lifecycle
+
+The following diagram shows the states a plugin moves through from initial discovery to active use and removal.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Discovered
+    Discovered --> Installed : Install from registry or CLI
+    Installed --> Authenticated : Auth configured
+    Installed --> ToolsLoaded : No auth required
+    Authenticated --> ToolsLoaded : tools/list fetched
+    ToolsLoaded --> Active : Tools available to agents
+    Active --> [*] : Removed
+```
 
 ### Discovery
 

@@ -516,6 +516,27 @@ Display content and block until the user accepts or rejects. Returns the user's 
 | `data` | object | Yes | Content data to display. |
 | `timeout` | number | No | Timeout in seconds (default: 120). |
 
+The following diagram shows the push_review blocking flow, including the timeout fallback.
+
+```mermaid
+sequenceDiagram
+    participant Agent as Agent
+    participant MV as MCPViews
+    participant WebView as WebView
+    participant User as User
+
+    Agent->>MV: push_review(tool_name, data, timeout)
+    MV->>WebView: Render review UI
+    Note over MV: HTTP blocked on oneshot channel
+    User->>WebView: Review and decide
+    WebView->>MV: submit_decision
+    MV->>Agent: Decision response
+
+    alt Timeout expires
+        MV->>Agent: 408 dismissed
+    end
+```
+
 #### structured_data renderer
 
 **Read-only display (push_content):**
@@ -609,6 +630,20 @@ Check the status or result of a previously pushed review session.
 ### `init_session`
 
 Initialize MCPViews for the current session. Returns current renderer definitions, behavioral rules, plugin auth status, and persistence instructions. Must be called at the start of every conversation, chat session, or interaction -- not just once.
+
+The following diagram shows the two-tier lazy-loading approach for plugin documentation.
+
+```mermaid
+sequenceDiagram
+    participant Agent as Agent
+    participant MV as MCPViews
+
+    Agent->>MV: init_session
+    MV->>Agent: Compact plugin_registry index + built-in rules
+    Note over Agent: Agent identifies needed plugin
+    Agent->>MV: get_plugin_docs(plugin, filters)
+    MV->>Agent: Detailed plugin rules + data hints
+```
 
 **Parameters:**
 | Field | Type | Required | Description |

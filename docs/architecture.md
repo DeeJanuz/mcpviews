@@ -6,37 +6,50 @@ MCPViews is a Tauri v2 desktop app that provides a rich display surface for AI a
 
 ## Data Flow
 
-```
-MCP Agent → POST localhost:4200/api/push
-                    │
-            ┌───────▼────────┐
-            │  Rust axum      │  (http_server.rs)
-            │  HTTP server    │
-            └───────┬────────┘
-                    │
-            ┌───────▼────────┐
-            │  SessionStore   │  (session.rs)
-            │  + ReviewState  │  (review.rs)
-            └───────┬────────┘
-                    │
-            tauri::emit("push_preview", session)
-                    │
-            ┌───────▼────────┐
-            │  WebView        │  (main.js + renderers/)
-            │  renders content│
-            └───────┬────────┘
-                    │ (user decides)
-            tauri::invoke("submit_decision", {sessionId, decision})
-                    │
-            ┌───────▼────────┐
-            │  Rust resolves  │  (review.rs oneshot channel)
-            │  pending review │
-            └───────┬────────┘
-                    │
-            HTTP response → MCP Agent
+The following diagram illustrates the end-to-end data flow from an MCP agent push through rendering and review back to the agent.
+
+```mermaid
+sequenceDiagram
+    participant Agent as MCP Agent
+    participant HTTP as HTTP Server
+    participant Store as SessionStore
+    participant Review as ReviewState
+    participant WebView as WebView
+    participant User as User
+
+    Agent->>HTTP: POST /api/push
+    HTTP->>Store: Store session
+    HTTP->>Review: Add pending review
+    HTTP->>WebView: tauri::emit("push_preview")
+    WebView->>User: Render content
+    User->>WebView: Submit decision
+    WebView->>Review: tauri::invoke("submit_decision")
+    Review->>HTTP: Resolve oneshot channel
+    HTTP->>Agent: HTTP response with decision
 ```
 
 ## Components
+
+The following diagram shows the main Rust source files and their dependency relationships.
+
+```mermaid
+graph TD
+    main.rs --> http_server.rs
+    main.rs --> commands.rs
+    main.rs --> state.rs
+    http_server.rs --> session.rs
+    http_server.rs --> review.rs
+    http_server.rs --> mcp_tools.rs
+    state.rs --> session.rs
+    state.rs --> review.rs
+    state.rs --> plugin.rs
+    state.rs --> mcp_session.rs
+    mcp_tools.rs --> mcp_registry_tools.rs
+    mcp_tools.rs --> mcp_prompts.rs
+    plugin.rs --> tool_cache.rs
+    plugin.rs --> auth.rs
+    commands.rs --> state.rs
+```
 
 ### Rust Backend (`src-tauri/src/`)
 
@@ -58,6 +71,25 @@ MCP Agent → POST localhost:4200/api/push
 | `mcp_registry_tools.rs` | MCP registry and auth tool handlers extracted from `mcp_tools.rs`. `build_registry_entries(cached, manifests, auth_status, tag_filter)` is a pure synchronous function that builds enriched registry entry JSON from cached registry data, installed manifests, and auth status (testable without async). `call_list_registry(arguments, state)` fetches and returns all registry entries with install/auth/update status enrichment, delegating to `build_registry_entries`. `call_start_plugin_auth(arguments, state)` uses `PluginRegistry::resolve_plugin_auth()` to extract auth config, then triggers OAuth browser flow or checks env vars for Bearer/ApiKey plugins. Includes 8 unit tests for `build_registry_entries` covering empty input, uninstalled/installed plugins, tag filtering, update detection, version parity, and auth status display |
 | `mcp_tools.rs` | MCP tool definitions and dispatch. Built-in tools: `push_content`, `push_review`, `push_check`, `init_session`, `mcpviews_setup`, `get_plugin_docs`, `get_plugin_prompt`, `update_plugins`, `save_update_preference`, `list_registry`, `start_plugin_auth`. `get_plugin_prompt` delegates to `crate::mcp_prompts::call_get_plugin_prompt`. `list_registry` and `start_plugin_auth` delegate to `crate::mcp_registry_tools`. Plugin tool proxy with automatic OAuth token refresh on expired tokens. Pushes only happen via explicit `push_content`/`push_review` calls from the coordinator agent (auto-push of plugin results was removed to prevent sub-agent research calls from flooding the UI). `normalize_data_param(raw)` extracts and auto-parses stringified JSON data payloads into objects (falling back to the original value if parsing fails), used by `call_push_impl`. `push_content` enforces read-only mode by stripping `change` fields from all row cells and columns before forwarding to the renderer, ensuring change markers never appear in non-review pushes. Renderer definitions (built-in + plugin) are collected and used to dynamically populate tool descriptions and MCP `initialize` instructions. Tool descriptions for `push_content` and `push_review` include per-renderer `data_hint` values from universal-scope renderers only; plugin renderer data shapes are deferred to `get_plugin_docs`. `BULK_ACTION_REVIEW_RULE` defines the mandatory review workflow for 2+ planned mutations (present via `push_review` before executing). `RICH_CONTENT_RULE` includes detailed formatting guidance for the `data` parameter (must be JSON object not string), mermaid diagram fencing (triple-backtick with `mermaid` language identifier), `<br/>` line breaks in node labels, and JSON string escaping rules. `synthesize_renderer_defs(manifest, cached_tools, known_names)` is a pure function that builds `RendererDef` entries from a manifest's `renderers` map, using cached tool definitions for descriptions; `available_renderers()` delegates to it as a thin aggregation layer. Session initialization is split into two tiers: `gather_slim_session_data(state)` returns built-in rules, a compact `plugin_registry` index, and `plugin_update_actions` (delegating to `evaluate_update_preferences(plugin_updates, store)`, a pure function that splits pending updates into auto_update vs ask_user based on `PluginPreferences`) (used by `call_init_session`), while `gather_session_data(state)` returns full rules including plugin rules (used by `call_mcpviews_setup`). `call_init_session` returns built-in rules, `rules_version` (current `RULES_VERSION` constant), plugin status, plugin registry index, plugin updates, `plugin_update_actions`, `rules_update` (stale-detection instructions for persisted rules files), and persistence instructions (now including version markers for update detection). `RULES_VERSION` constant (currently "3") is bumped when built-in rules change; persistence instructions include a version marker so agents can detect stale persisted rules. `ensure_registry_fresh(state)` (pub(crate)) lazily populates the registry cache on first use (fetching from all sources via `fetch_all_registries`, which resolves remote manifest URLs internally). `collect_plugin_updates(manifests, registry_entries)` compares installed plugin versions against registry versions using the shared `newer_version()` helper to identify available updates. `call_get_plugin_docs` fetches detailed rules for a single plugin with optional group/tool/renderer filters. Both delegate to extracted pure functions: `collect_builtin_rules(renderers)` (built-in rules only — includes `renderer_selection` and `bulk_action_review` system rules), `collect_plugin_rules(renderers, manifest, tool_filter, renderer_filter)` (single-plugin rules with filtering — tool name prefixing uses direct concatenation to avoid double-underscore in prefixed names; plugin-level `plugin_rules` are always included regardless of filters), `collect_rules(builtin_renderers, manifests)` (all rules including plugin-level behavioral rules — same prefix fix applied), `collect_plugin_auth_status(manifests)` (pub(crate)), `persistence_instructions(agent_type)`, and `setup_instructions(agent_type)`. `build_plugin_registry(manifests, tool_cache)` constructs a compact plugin index using `registry_index` from manifests or `auto_derive_registry_index(manifest, cached_tools)` for auto-derivation from renderer maps and tool cache. Plugin registry entries now include `prompts` arrays listing each plugin's prompt definitions and `plugin_rules` arrays listing each plugin's behavioral rules. `build_data_description` now filters to universal-scope renderers only and appends a pointer to `get_plugin_docs` for plugin renderer data shapes. Includes 71 unit tests for all extracted helpers |
 | `auth.rs` | Plugin authentication — OAuth browser-redirect flow with ephemeral localhost callback server. Token storage and loading delegate to `shared::token_store`. Includes `refresh_oauth_token()` for automatic refresh_token grant when access tokens expire |
+
+The following flowchart shows how plugin auth tokens are resolved at runtime.
+
+```mermaid
+flowchart TD
+    Start([Resolve Auth Token]) --> CheckStored{Check stored token}
+    CheckStored -->|Valid| UseIt([Use stored token])
+    CheckStored -->|Expired| HasRefresh{Has refresh_token?}
+    CheckStored -->|Not found| CheckEnv{Check env var}
+    HasRefresh -->|Yes| TryRefresh[Try refresh grant]
+    HasRefresh -->|No| CheckEnv
+    TryRefresh --> RefreshOk{Success?}
+    RefreshOk -->|Yes| StoreNew[Store new token]
+    StoreNew --> UseIt
+    RefreshOk -->|No| CheckEnv
+    CheckEnv -->|Found| UseEnv([Use env var token])
+    CheckEnv -->|Not found| Fail([Auth not configured])
+```
+
 | `scripts/` | Bundled installer scripts for agent integration setup: `setup-integrations.sh` (Linux/macOS) and `setup-integrations.ps1` (Windows). Generates platform-specific MCP configs: Claude Desktop receives an `mcp-remote` bridge entry (`npx mcp-remote`) because it only supports stdio transport; Claude Code CLI is configured via `claude mcp add --transport http --scope user` (native CLI command writing to `~/.claude.json`) instead of direct JSON merge, with detection via `claude mcp list`; all other JSON-based platforms receive a direct HTTP URL entry. Both scripts include an `already_configured` guard that skips platforms already configured, using `claude mcp list` for Claude Code and JSON key inspection (via Python or grep fallback) for other platforms |
 
 ### Frontend (`src/` + `public/`)
@@ -111,6 +143,31 @@ Standalone Node.js script that bridges a remote server's SSE stream to the local
 3. Forwards each event as `POST localhost:4200/api/push`
 4. Exponential backoff reconnection (5s → 60s)
 5. Keepalive timeout detection (45s)
+
+## Review Workflow Flow
+
+The following diagram details the blocking push_review flow, where the HTTP handler awaits a user decision via a oneshot channel before responding to the agent.
+
+```mermaid
+sequenceDiagram
+    participant Agent as Agent
+    participant HTTP as HTTP Server
+    participant Review as ReviewState
+    participant Store as SessionStore
+    participant WebView as WebView
+    participant User as User
+
+    Agent->>HTTP: POST /api/push (reviewRequired: true)
+    HTTP->>Review: Create oneshot channel
+    HTTP->>Store: Store session
+    HTTP->>WebView: emit push_preview
+    Note over HTTP: HTTP handler awaits oneshot receiver
+    WebView->>User: Render review UI
+    User->>WebView: Click accept/reject
+    WebView->>Review: invoke submit_decision
+    Review->>HTTP: Resolve oneshot with decision
+    HTTP->>Agent: Return decision in HTTP response
+```
 
 ## Key Design Decisions
 

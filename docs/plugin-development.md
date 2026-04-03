@@ -411,6 +411,24 @@ The renderer scanner (`renderer_scanner.rs`) automatically discovers JS files in
 
 ## Agent Discovery and Renderer Definitions
 
+The following diagram shows the two-tier lazy-loading flow for agent plugin documentation.
+
+```mermaid
+sequenceDiagram
+    participant Agent as Agent
+    participant MV as MCPViews
+
+    Note over Agent,MV: Session Start
+    Agent->>MV: init_session
+    MV->>Agent: Compact plugin_registry index
+
+    Note over Agent: Agent needs plugin tools
+    Agent->>MV: get_plugin_docs(plugin, filters)
+    MV->>Agent: Detailed rules + data hints
+
+    Note over Agent,MV: Filter types: groups, tools, renderers
+```
+
 MCPViews uses a two-tier lazy-loading approach for plugin documentation, reducing session-start token usage:
 
 1. **`init_session`** — Returns only built-in (universal) rules and a compact `plugin_registry` index. Each plugin entry lists its name, summary, tags, tool groups (with tool names and short hints), and renderer names. Agents use this index to identify which plugin provides the tools they need.
@@ -716,6 +734,24 @@ The `init_session` plugin registry also includes a `prompts` array for each inst
 
 ## Cross-Renderer Invocation
 
+The following diagram shows how a cross-renderer invocation flows from a link click to the target renderer opening in a drawer.
+
+```mermaid
+sequenceDiagram
+    participant RA as Renderer A
+    participant User as User
+    participant IR as Invocation Registry
+    participant DS as Drawer Stack
+    participant RB as Target Renderer
+
+    RA->>User: Render content with mcpview:// link
+    User->>IR: Click link
+    IR->>IR: Resolve target renderer
+    IR->>DS: Open slide-out drawer panel
+    DS->>RB: Pass context (params, mode, level)
+    RB->>User: Render target content
+```
+
 Renderers can link to other renderers using the `mcpview://` URI protocol. When a user clicks an invocation link, the target renderer opens in a stacking slide-out drawer panel.
 
 ### mcpview:// Links in Markdown
@@ -774,6 +810,305 @@ window.__renderers['my_renderer'] = function(container, data, meta, toolArgs, re
 MCPViews dynamically builds the Content Security Policy `connect-src` directive to include the origins of all installed plugin MCP URLs. This means custom renderers bundled with your plugin can use `fetch()` to call your plugin's API directly from the browser without being blocked by CSP.
 
 When a new plugin is installed, MCPViews reloads the webview so the updated CSP takes effect immediately. No plugin configuration is needed -- the origin is extracted automatically from the `mcp.url` field in your manifest. For example, if your manifest has `"url": "https://api.example.com/mcp"`, then `https://api.example.com` is added to `connect-src`.
+
+## Renderer Interaction Patterns
+
+Renderers can interact with data in two fundamentally different ways. Most plugins use one or both of these patterns.
+
+### Pattern 1: MCP Pass-Through (Full Data Push)
+
+The agent calls an MCP tool, receives the full result, and pushes it to the renderer via `push_content`. The renderer is stateless — it receives everything it needs in the `data` parameter and renders it immediately.
+
+```mermaid
+sequenceDiagram
+    participant Agent as AI Agent
+    participant MV as MCPViews
+    participant Plugin as Plugin MCP Server
+    participant Renderer as Custom Renderer
+
+    Agent->>MV: tools/call "myplugin_search"
+    MV->>Plugin: tools/call "search" (with auth)
+    Plugin-->>MV: Full result JSON
+    MV-->>Agent: Tool result
+    Agent->>MV: push_content(tool_name, data)
+    MV->>Renderer: render(data, container)
+    Note over Renderer: Renders immediately from data<br/>No API calls needed
+```
+
+**When to use:** The MCP tool returns all the data the renderer needs. Good for search results, analysis output, read-only reports, and any content where the agent already has the complete payload.
+
+**Example — search results renderer:**
+
+```javascript
+window.__renderers['search_results'] = function(container, data, meta) {
+  container.innerHTML = '';
+  // data contains everything: { results: [{ type, items }] }
+  var results = data.results || [];
+  for (var i = 0; i < results.length; i++) {
+    var group = results[i];
+    var section = document.createElement('div');
+    section.innerHTML = '<h3>' + group.type + '</h3>';
+    // ... render each item from the data payload
+    container.appendChild(section);
+  }
+};
+```
+
+The agent controls what data reaches the renderer. The renderer has no independent data access.
+
+### Pattern 2: API Hydration (Reference Push)
+
+The agent pushes only a lightweight reference (e.g., an entity ID or a filter set), and the renderer fetches the full data directly from the plugin's backend API via `fetch()`. This enables interactive, live UIs that can refresh, paginate, and respond to user actions without round-tripping through the agent.
+
+```mermaid
+sequenceDiagram
+    participant Agent as AI Agent
+    participant MV as MCPViews
+    participant Renderer as Custom Renderer
+    participant API as Plugin Backend API
+
+    Agent->>MV: push_content("dashboard", { organization_id: "org-1" })
+    MV->>Renderer: render({ organization_id: "org-1" }, container)
+    Renderer->>Renderer: autoInit(meta) — resolve base URL + auth token
+    Renderer->>API: GET /api/initiatives?org=org-1
+    API-->>Renderer: Initiative list
+    Renderer->>API: GET /api/projects?org=org-1
+    API-->>Renderer: Project list
+    Renderer->>Renderer: Build full dashboard UI
+    Note over Renderer: User clicks "Approve" on a decision
+    Renderer->>API: POST /api/decisions/dec-1/approve
+    API-->>Renderer: Updated decision
+    Renderer->>Renderer: Re-render updated state
+```
+
+**When to use:** The renderer needs to display a rich, interactive view that goes beyond what the agent pushed. Dashboards, detail views with navigation, forms with submit actions, and any UI where the user interacts directly with the backend.
+
+**Key requirements:**
+- Your plugin's `mcp.url` must be set — MCPViews adds it to the CSP `connect-src` so `fetch()` works
+- Use the `autoInit` pattern (below) to resolve the API base URL and auth token
+- The MCP push is lightweight — just enough for the renderer to know what to fetch
+
+#### Shared API Client Pattern
+
+The recommended architecture separates the API client into a shared file that all renderers import via `window` globals. This avoids duplicating init/auth logic across renderers.
+
+**File structure:**
+
+```
+my-plugin/
+  manifest.json
+  renderers/
+    shared/
+      00-api-client.js    ← Shared API client (loaded first)
+    dashboard.js          ← Renderer using API hydration
+    detail-view.js        ← Another renderer using API hydration
+```
+
+**`shared/00-api-client.js`** — Shared API client with `autoInit`:
+
+```javascript
+(function() {
+  'use strict';
+
+  var _token = '';
+
+  function _headers(withBody) {
+    var h = {};
+    if (_token) h['Authorization'] = 'Bearer ' + _token;
+    if (withBody) h['Content-Type'] = 'application/json';
+    return h;
+  }
+
+  function _handleResponse(response) {
+    if (!response.ok) throw new Error('API error: ' + response.status);
+    return response.json();
+  }
+
+  // Retry on 401 — refresh token and retry once
+  function _fetchWithRetry(url, opts) {
+    return fetch(url, opts).then(function(response) {
+      if (response.status === 401 && window.__TAURI__ && window.__TAURI__.core) {
+        // Token expired — refresh and retry
+        return window.__TAURI__.core.invoke('get_plugin_auth_header', { pluginName: 'my-plugin' })
+          .then(function(authHeader) {
+            _token = (authHeader || '').replace(/^Bearer\s+/i, '');
+            var retryOpts = Object.assign({}, opts, { headers: _headers(!!opts.body) });
+            return fetch(url, retryOpts).then(_handleResponse);
+          });
+      }
+      return _handleResponse(response);
+    });
+  }
+
+  var api = {
+    _baseUrl: '',
+    _initialized: false,
+
+    autoInit: function(meta) {
+      if (api._initialized) return Promise.resolve();
+
+      // 1. Resolve base URL
+      var base = '';
+      if (meta && meta._api_base) {
+        base = meta._api_base;
+      } else if (window.__mcpviews_plugins
+                 && window.__mcpviews_plugins['my-plugin']
+                 && window.__mcpviews_plugins['my-plugin'].mcp_url) {
+        base = window.__mcpviews_plugins['my-plugin'].mcp_url
+               .replace(/\/api\/mcp\/?$/, '/api');
+      } else {
+        base = 'http://localhost:3001/api';  // dev fallback
+      }
+      api._baseUrl = base.replace(/\/$/, '');
+
+      // 2. Resolve auth token via Tauri IPC
+      if (window.__TAURI__ && window.__TAURI__.core) {
+        return window.__TAURI__.core.invoke('get_plugin_auth_header', { pluginName: 'my-plugin' })
+          .then(function(authHeader) {
+            _token = (authHeader || '').replace(/^Bearer\s+/i, '');
+            api._initialized = true;
+          })
+          .catch(function() { api._initialized = true; });
+      }
+
+      api._initialized = true;
+      return Promise.resolve();
+    },
+
+    // Convenience wrapper: show loading, init, then call render function
+    withReady: function(container, meta, renderFn) {
+      container.innerHTML = '<div style="padding:16px;color:var(--text-secondary);">'
+        + 'Loading...</div>';
+      api.autoInit(meta).then(function() {
+        renderFn(api);
+      }).catch(function(err) {
+        container.innerHTML = '<div style="color:var(--color-error-text);padding:16px;">'
+          + 'Failed to initialize: ' + err.message + '</div>';
+      });
+    },
+
+    get: function(path) {
+      return _fetchWithRetry(api._baseUrl + path, {
+        method: 'GET', headers: _headers(false)
+      });
+    },
+
+    post: function(path, body) {
+      return _fetchWithRetry(api._baseUrl + path, {
+        method: 'POST', headers: _headers(true), body: JSON.stringify(body)
+      });
+    }
+  };
+
+  window.__myPluginAPI = api;
+})();
+```
+
+**`dashboard.js`** — Renderer that hydrates from the API:
+
+```javascript
+(function() {
+  'use strict';
+  window.__renderers = window.__renderers || {};
+
+  window.__renderers.my_dashboard = function(container, data, meta) {
+    container.innerHTML = '';
+    var API = window.__myPluginAPI;
+
+    // data is lightweight: { organization_id: "org-1" }
+    API.withReady(container, meta, function() {
+      // Now fetch the real data from the backend
+      Promise.all([
+        API.get('/initiatives?org=' + data.organization_id),
+        API.get('/projects?org=' + data.organization_id),
+        API.get('/tasks?status=open&org=' + data.organization_id)
+      ]).then(function(results) {
+        var initiatives = results[0].data || [];
+        var projects = results[1].data || [];
+        var tasks = results[2].data || [];
+
+        container.innerHTML = '';
+        // Build the full dashboard from fetched data
+        renderDashboard(container, initiatives, projects, tasks);
+      });
+    });
+  };
+
+  function renderDashboard(container, initiatives, projects, tasks) {
+    // ... build interactive dashboard UI
+    // User actions (approve, transition, etc.) call API.post() directly
+  }
+})();
+```
+
+**How the agent uses it:**
+
+The agent only needs to push a lightweight reference. The renderer handles everything else:
+
+```
+Agent: push_content({ tool_name: "my_dashboard", data: { organization_id: "org-1" } })
+```
+
+The renderer receives `{ organization_id: "org-1" }`, calls `autoInit` to resolve the API URL and auth token, then fetches initiatives, projects, and tasks directly from the backend. User actions (clicking "Approve", transitioning a status) are handled entirely within the renderer via `API.post()` — no agent involvement needed.
+
+#### Combining Both Patterns
+
+Many plugins use both patterns depending on the renderer. For example:
+
+| Renderer | Pattern | Why |
+|----------|---------|-----|
+| `search_results` | MCP pass-through | Agent already has the search results from the MCP tool call |
+| `dashboard` | API hydration | Needs to aggregate multiple API calls and support live interaction |
+| `detail_view` | API hydration | Receives just an entity ID, fetches full details + related entities |
+| `code_units` | MCP pass-through | Code analysis output comes from the MCP tool |
+| `data_review` | Both | MCP push provides the proposed changes; renderer fetches current state for comparison |
+
+**Manifest for a mixed plugin:**
+
+```json
+{
+  "name": "my-plugin",
+  "version": "1.0.0",
+  "renderers": {
+    "search_files": "search_results",
+    "get_overview": "dashboard"
+  },
+  "renderer_definitions": [
+    {
+      "name": "search_results",
+      "description": "Search results display",
+      "scope": "tool",
+      "tools": ["search_files"],
+      "data_hint": "{ results: [{ type: string, items: [] }] }"
+    },
+    {
+      "name": "dashboard",
+      "description": "Interactive dashboard — fetches live data from the API",
+      "scope": "universal",
+      "tools": [],
+      "data_hint": "{ organization_id: string }",
+      "rule": "Push only the organization_id. The renderer fetches all data via API."
+    }
+  ],
+  "mcp": {
+    "url": "https://api.example.com/mcp",
+    "auth": { "type": "oauth", "auth_url": "...", "token_url": "..." },
+    "tool_prefix": "myplugin_"
+  }
+}
+```
+
+Note the `data_hint` difference: `search_results` expects the full payload, while `dashboard` expects only a reference ID. The `rule` on the dashboard renderer tells the agent not to try to pre-fetch dashboard data — the renderer handles it.
+
+#### Auth Token Lifecycle in API-Hydrating Renderers
+
+When a renderer calls your backend API directly, it needs a valid auth token. The `autoInit` pattern handles this automatically:
+
+1. **Initial token**: Resolved via `get_plugin_auth_header` Tauri IPC command during `autoInit()`
+2. **Token refresh**: If a `fetch()` returns `401`, the `_fetchWithRetry` wrapper calls `get_plugin_auth_header` again (which triggers OAuth refresh if needed), then retries the request once
+3. **Token storage**: MCPViews stores tokens in `~/.mcpviews/auth/<plugin>.json` — the renderer never touches disk
+
+This means renderers get the same token lifecycle (stored → env fallback → OAuth refresh) as MCP tool calls, without any renderer-specific auth code.
 
 ## Auto-Push Removed (Explicit Push Only)
 
